@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markewer — A beautiful way to read Markdown</title>
+  <meta name="description" content="A minimal, elegant Markdown viewer for macOS, Linux, and Windows. GitHub Flavored Markdown, syntax highlighting, live reload, and outline navigation.">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+  <header id="header">
+    <div class="container header-inner">
+      <a href="#" class="logo">Markewer</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/Devitools/markewer" target="_blank" rel="noopener">GitHub</a>
+        <button id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1v12A6 6 0 1 1 8 2z"/>
+          </svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <section id="hero">
+    <div class="container">
+      <h1>A beautiful way to read Markdown.</h1>
+      <p class="subtitle">
+        Minimal viewer with GitHub Flavored Markdown, syntax highlighting,
+        live reload, and outline navigation. Native on macOS, cross-platform via Tauri.
+      </p>
+      <div class="cta">
+        <a id="cta-download" href="#download" class="btn btn-primary">
+          Download for <span id="cta-os">your OS</span>
+        </a>
+        <a href="https://github.com/Devitools/markewer" class="btn btn-secondary" target="_blank" rel="noopener">
+          View on GitHub
+        </a>
+      </div>
+      <div class="screenshot-wrapper">
+        <div class="screenshot-placeholder">
+          <span>Screenshot</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="container">
+      <h2>Features</h2>
+      <div class="features-grid">
+        <div class="feature">
+          <h3>GitHub Flavored Markdown</h3>
+          <p>Tables, task lists, strikethrough, and autolinks — all rendered faithfully.</p>
+        </div>
+        <div class="feature">
+          <h3>Syntax Highlighting</h3>
+          <p>Code blocks highlighted by highlight.js with automatic light and dark themes.</p>
+        </div>
+        <div class="feature">
+          <h3>Live Reload</h3>
+          <p>Watches your file and refreshes instantly when you save from any editor.</p>
+        </div>
+        <div class="feature">
+          <h3>Outline Navigation</h3>
+          <p>Sidebar with all headings. Click to smooth-scroll to any section.</p>
+        </div>
+        <div class="feature">
+          <h3>Theme Switching</h3>
+          <p>Cycle between system, light, and dark themes. Your preference is remembered.</p>
+        </div>
+        <div class="feature">
+          <h3>Cross-Platform</h3>
+          <p>Native Swift app on macOS. Tauri-powered app on Linux and Windows.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="container">
+      <h2>Download</h2>
+      <p class="download-subtitle">Choose the right version for your operating system.</p>
+      <div class="download-grid">
+        <div class="download-card" data-os="macos">
+          <h3>macOS</h3>
+          <p>Native Swift app</p>
+          <a href="https://github.com/Devitools/markewer/releases/latest/download/Markewer.dmg" class="btn btn-primary">Download DMG</a>
+        </div>
+        <div class="download-card" data-os="linux">
+          <h3>Linux</h3>
+          <p>Tauri app</p>
+          <div class="download-links">
+            <a href="https://github.com/Devitools/markewer/releases/latest" class="btn btn-primary">AppImage</a>
+            <a href="https://github.com/Devitools/markewer/releases/latest" class="btn btn-secondary">.deb</a>
+          </div>
+        </div>
+        <div class="download-card" data-os="windows">
+          <h3>Windows</h3>
+          <p>Tauri app</p>
+          <a href="https://github.com/Devitools/markewer/releases/latest" class="btn btn-primary">Download .exe</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container footer-inner">
+      <span>&copy; 2025 Devitools</span>
+      <a href="https://github.com/Devitools/markewer" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+
+  <script src="js/site.js"></script>
+</body>
+</html>
