@@ -1,0 +1,35 @@
+name: Release Swift (macOS DMG)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build
+        working-directory: apps/macos
+        run: make build
+
+      - name: Create DMG
+        working-directory: apps/macos
+        run: make dist
+
+      - name: Upload DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: apps/macos/dist/Markewer-1.0.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
