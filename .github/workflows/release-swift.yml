@@ -1,9 +1,14 @@
 name: Release Swift (macOS DMG)
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      tag_name:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +19,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Patch version in Info.plist
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" \
+            apps/macos/Sources/Arandu/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.version }}" \
+            apps/macos/Sources/Arandu/Info.plist
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -26,10 +38,13 @@ jobs:
         working-directory: apps/macos
         run: make dist
 
+      - name: Rename DMG with version
+        run: mv apps/macos/dist/Arandu.dmg apps/macos/dist/Arandu-${{ inputs.version }}-macos.dmg
+
       - name: Upload DMG to release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
-          files: apps/macos/dist/Arandu.dmg
+          tag_name: ${{ inputs.tag_name }}
+          files: apps/macos/dist/Arandu-${{ inputs.version }}-macos.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

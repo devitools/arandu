@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_id: ${{ steps.release.outputs.id }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p' || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="$TAG"
+          else
+            RANGE="$PREV_TAG..$TAG"
+          fi
+
+          FEATURES=$(git log "$RANGE" --pretty=format:"- %s" --grep="^feat" || true)
+          FIXES=$(git log "$RANGE" --pretty=format:"- %s" --grep="^fix" || true)
+          OTHER=$(git log "$RANGE" --pretty=format:"- %s" --grep="^refactor\|^perf\|^build\|^ci\|^chore" || true)
+
+          {
+            echo "body<<CHANGELOG_EOF"
+            if [ -n "$FEATURES" ]; then
+              echo "### Features"
+              echo "$FEATURES"
+              echo ""
+            fi
+            if [ -n "$FIXES" ]; then
+              echo "### Fixes"
+              echo "$FIXES"
+              echo ""
+            fi
+            if [ -n "$OTHER" ]; then
+              echo "### Other"
+              echo "$OTHER"
+              echo ""
+            fi
+            echo "---"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-$(git rev-list --max-parents=0 HEAD | head -1)}...$TAG"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: "Arandu ${{ steps.meta.outputs.tag_name }}"
+          body: ${{ steps.changelog.outputs.body }}
+          draft: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    needs: create-release
+    uses: ./.github/workflows/release-swift.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+      tag_name: ${{ needs.create-release.outputs.tag_name }}
+
+  build-tauri:
+    needs: create-release
+    uses: ./.github/workflows/release-tauri.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+      tag_name: ${{ needs.create-release.outputs.tag_name }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
