@@ -15,39 +15,20 @@ Visualizador de Markdown para macOS inspirado no [Typora](https://typora.io) e [
 
 ## Instalação
 
-### Opção 1 — DMG (recomendado)
+### DMG (recomendado)
 
-1. Baixe o arquivo `Arandu.dmg` + `install.sh`
+1. Baixe o arquivo `Arandu.dmg` da [página de releases](https://github.com/nicollassilva/markewer/releases)
 2. Monte o DMG (duplo clique)
-3. Execute no terminal:
+3. Arraste `Arandu.app` para a pasta `Applications`
+4. Ao abrir o app pela primeira vez, ele oferece instalar o CLI `arandu` automaticamente
+
+> O CLI também pode ser instalado a qualquer momento pelo menu: **Arandu → Install Command Line Tool…**
+
+### Manual
+
+Se preferir instalar o CLI manualmente:
 
 ```bash
-cd /Volumes/Arandu
-./install.sh
-```
-
-> Isso instala o app em `~/Applications/` e o CLI em `/usr/local/bin/arandu`.
-
-### Opção 2 — Script direto
-
-Se você já tem o `Arandu.app`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash -s -- /path/to/Arandu.app
-# ou
-./install.sh /path/to/Arandu.app
-```
-
-### Opção 3 — Manual
-
-```bash
-# 1. Copiar o app
-cp -R Arandu.app ~/Applications/
-
-# 2. Remover a flag de quarantine (Gatekeeper)
-xattr -d com.apple.quarantine ~/Applications/Arandu.app
-
-# 3. Instalar o CLI
 sudo cp scripts/arandu /usr/local/bin/arandu
 sudo chmod +x /usr/local/bin/arandu
 ```
@@ -97,11 +78,17 @@ make dist
 ## Estrutura
 
 ```
-Sources/Arandu/
-├── main.swift              # Código principal (AppDelegate, WindowController, renderer)
-└── Resources/
-    ├── style.css           # CSS estilo Typora
-    ├── highlight.min.js    # Syntax highlighting (highlight.js)
-    ├── highlight-light.min.css
-    └── highlight-dark.min.css
+apps/macos/
+├── Sources/Arandu/
+│   ├── main.swift              # Código principal (AppDelegate, WindowController, CLI installer)
+│   └── Resources/
+│       ├── style.css           # CSS estilo Typora
+│       ├── highlight.min.js    # Syntax highlighting (highlight.js)
+│       ├── highlight-light.min.css
+│       └── highlight-dark.min.css
+├── scripts/
+│   ├── arandu                  # CLI script (também embarcado no app)
+│   └── install.sh              # Script de instalação para devs
+├── project.yml                 # XcodeGen spec
+└── Makefile
 ```
