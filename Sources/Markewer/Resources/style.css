@@ -87,14 +87,14 @@ code {
     background: var(--code-bg);
     color: var(--code-text);
     padding: 0.15em 0.4em;
-    border-radius: 6px;
+    border-radius: 3px;
     border: 1px solid var(--border);
 }
 
 /* Code blocks — highlight.js handles colors */
 pre {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 0;
     overflow-x: auto;
     margin: 0 0 1.25em;
@@ -103,7 +103,7 @@ pre {
 
 pre code.hljs {
     border: none;
-    border-radius: 8px;
+    border-radius: 4px;
     font-size: 0.875em;
     padding: 16px;
 }
@@ -240,7 +240,7 @@ code {
     background: var(--code-bg);
     color: var(--code-text);
     padding: 0.15em 0.4em;
-    border-radius: 6px;
+    border-radius: 3px;
     border: 1px solid var(--border);
 }
 
@@ -248,7 +248,7 @@ code {
 pre {
     background: var(--code-bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 16px;
     overflow-x: auto;
     margin: 0 0 1.25em;
