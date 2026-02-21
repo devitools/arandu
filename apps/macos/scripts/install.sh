@@ -1,8 +1,8 @@
 #!/bin/bash
-# install.sh — Markewer installer
+# install.sh — Arandu installer
 # Usage:
-#   Local:  ./install.sh [/path/to/Markewer.app]
-#   Remote: curl -fsSL https://raw.githubusercontent.com/devitools/markewer/main/scripts/install.sh | bash
+#   Local:  ./install.sh [/path/to/Arandu.app]
+#   Remote: curl -fsSL https://raw.githubusercontent.com/devitools/arandu/main/scripts/install.sh | bash
 
 set -eo pipefail
 
@@ -19,7 +19,7 @@ warn() { echo -e "${YELLOW}⚠${RESET}  $*"; }
 info() { echo -e "  $*"; }
 
 # ── Resolve app path ──────────────────────────────────────────────────────────
-REPO="devitools/markewer"
+REPO="devitools/arandu"
 CLEANUP_DMG=false
 
 if [ ${#BASH_SOURCE[@]} -gt 0 ] && [ -n "${BASH_SOURCE[0]}" ]; then
@@ -31,19 +31,19 @@ fi
 if [ $# -ge 1 ]; then
     APP_SRC="$1"
 elif [ -n "$SCRIPT_DIR" ]; then
-    APP_SRC="$SCRIPT_DIR/Markewer.app"
+    APP_SRC="$SCRIPT_DIR/Arandu.app"
 else
-    info "Downloading Markewer..."
+    info "Downloading Arandu..."
 
     VERSION="${VERSION:-latest}"
     if [ "$VERSION" = "latest" ]; then
-        DMG_URL="https://github.com/$REPO/releases/latest/download/Markewer.dmg"
+        DMG_URL="https://github.com/$REPO/releases/latest/download/Arandu.dmg"
     else
-        DMG_URL="https://github.com/$REPO/releases/download/v${VERSION}/Markewer.dmg"
+        DMG_URL="https://github.com/$REPO/releases/download/v${VERSION}/Arandu.dmg"
     fi
 
     TMPDIR_DL="$(mktemp -d)"
-    DMG_PATH="$TMPDIR_DL/Markewer.dmg"
+    DMG_PATH="$TMPDIR_DL/Arandu.dmg"
 
     if ! curl -fSL --progress-bar -o "$DMG_PATH" "$DMG_URL"; then
         err "Failed to download DMG from: $DMG_URL"
@@ -58,12 +58,12 @@ else
         exit 1
     fi
 
-    APP_SRC="$MOUNT_POINT/Markewer.app"
+    APP_SRC="$MOUNT_POINT/Arandu.app"
     CLEANUP_DMG=true
 fi
 
 if [ ! -d "$APP_SRC" ]; then
-    err "Markewer.app not found at: $APP_SRC"
+    err "Arandu.app not found at: $APP_SRC"
     if [ "$CLEANUP_DMG" = "true" ]; then
         hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
         rm -rf "$TMPDIR_DL"
@@ -71,12 +71,12 @@ if [ ! -d "$APP_SRC" ]; then
     exit 1
 fi
 
-APP_DEST="$HOME/Applications/Markewer.app"
-CLI_DEST="/usr/local/bin/markewer"
-CLI_FALLBACK="$HOME/.local/bin/markewer"
+APP_DEST="$HOME/Applications/Arandu.app"
+CLI_DEST="/usr/local/bin/arandu"
+CLI_FALLBACK="$HOME/.local/bin/arandu"
 
 echo ""
-echo -e "${BOLD}Installing Markewer${RESET}"
+echo -e "${BOLD}Installing Arandu${RESET}"
 echo "────────────────────────────────────────"
 
 # ── 1. Copy app to ~/Applications ────────────────────────────────────────────
@@ -95,10 +95,10 @@ ok "Quarantine flag removed"
 
 # ── 3. Install CLI ────────────────────────────────────────────────────────────
 CLI_CONTENT='#!/bin/bash
-# Markewer CLI — opens Markdown files with the Markewer app
-APP="$HOME/Applications/Markewer.app"
+# Arandu CLI — opens Markdown files with the Arandu app
+APP="$HOME/Applications/Arandu.app"
 if [ ! -d "$APP" ]; then
-    echo "Markewer.app not found at $APP" >&2; exit 1
+    echo "Arandu.app not found at $APP" >&2; exit 1
 fi
 if [ "$#" -eq 0 ]; then
     open "$APP"
@@ -164,15 +164,15 @@ fi
 
 # ── 4. Summary ────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}${GREEN}Markewer installed successfully!${RESET}"
+echo -e "${BOLD}${GREEN}Arandu installed successfully!${RESET}"
 echo "────────────────────────────────────────"
-info "App:  ~/Applications/Markewer.app"
+info "App:  ~/Applications/Arandu.app"
 info "CLI:  $CLI_LOCATION"
 echo ""
 echo -e "${BOLD}Usage:${RESET}"
-info "  markewer README.md          # Open a single file"
-info "  markewer *.md               # Open multiple files"
-info "  markewer                    # Launch the app"
+info "  arandu README.md          # Open a single file"
+info "  arandu *.md               # Open multiple files"
+info "  arandu                    # Launch the app"
 echo ""
 
 # ── 5. Clean up DMG ──────────────────────────────────────────────────────────

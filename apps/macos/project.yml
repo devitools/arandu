@@ -1,6 +1,6 @@
-name: Markewer
+name: Arandu
 options:
-  bundleIdPrefix: com.techena
+  bundleIdPrefix: com.devitools
   deploymentTarget:
     macOS: "13.0"
   xcodeVersion: "15"
@@ -12,21 +12,21 @@ packages:
     exactVersion: 0.29.4
 
 targets:
-  Markewer:
+  Arandu:
     type: application
     platform: macOS
     sources:
-      - Sources/Markewer
+      - Sources/Arandu
     resources:
-      - Sources/Markewer/Resources
+      - Sources/Arandu/Resources
     dependencies:
       - package: cmark-gfm
         product: libcmark_gfm
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.techena.markewer
-        PRODUCT_NAME: Markewer
-        INFOPLIST_FILE: Sources/Markewer/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.devitools.arandu
+        PRODUCT_NAME: Arandu
+        INFOPLIST_FILE: Sources/Arandu/Info.plist
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_IDENTITY: "-"

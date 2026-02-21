@@ -1,4 +1,4 @@
-# Markewer
+# Arandu
 
 Visualizador de Markdown para macOS inspirado no [Typora](https://typora.io) e [Marked 2](https://marked2app.com). Abre arquivos `.md` via linha de comando com renderização bonita, dark mode automático, syntax highlighting e sumário lateral.
 
@@ -17,55 +17,55 @@ Visualizador de Markdown para macOS inspirado no [Typora](https://typora.io) e [
 
 ### Opção 1 — DMG (recomendado)
 
-1. Baixe o arquivo `Markewer-1.0.dmg` + `install.sh`
+1. Baixe o arquivo `Arandu-1.0.dmg` + `install.sh`
 2. Monte o DMG (duplo clique)
 3. Execute no terminal:
 
 ```bash
-cd /Volumes/Markewer
+cd /Volumes/Arandu
 ./install.sh
 ```
 
-> Isso instala o app em `~/Applications/` e o CLI em `/usr/local/bin/markewer`.
+> Isso instala o app em `~/Applications/` e o CLI em `/usr/local/bin/arandu`.
 
 ### Opção 2 — Script direto
 
-Se você já tem o `Markewer.app`:
+Se você já tem o `Arandu.app`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash -s -- /path/to/Markewer.app
+curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash -s -- /path/to/Arandu.app
 # ou
-./install.sh /path/to/Markewer.app
+./install.sh /path/to/Arandu.app
 ```
 
 ### Opção 3 — Manual
 
 ```bash
 # 1. Copiar o app
-cp -R Markewer.app ~/Applications/
+cp -R Arandu.app ~/Applications/
 
 # 2. Remover a flag de quarantine (Gatekeeper)
-xattr -d com.apple.quarantine ~/Applications/Markewer.app
+xattr -d com.apple.quarantine ~/Applications/Arandu.app
 
 # 3. Instalar o CLI
-sudo cp scripts/markewer /usr/local/bin/markewer
-sudo chmod +x /usr/local/bin/markewer
+sudo cp scripts/arandu /usr/local/bin/arandu
+sudo chmod +x /usr/local/bin/arandu
 ```
 
 ## Uso
 
 ```bash
 # Abrir um arquivo
-markewer README.md
+arandu README.md
 
 # Abrir múltiplos arquivos (cada um em uma janela)
-markewer doc1.md doc2.md
+arandu doc1.md doc2.md
 
 # Abrir todos os .md do diretório atual
-markewer *.md
+arandu *.md
 
 # Sem argumentos — abre seletor de arquivo
-markewer
+arandu
 ```
 
 ## Gatekeeper (nota importante)
@@ -73,7 +73,7 @@ markewer
 O app é distribuído sem assinatura da Apple (não requer Apple Developer Program). No primeiro uso, o macOS pode bloquear. O script `install.sh` já remove a flag automaticamente. Se precisar fazer manualmente:
 
 ```bash
-xattr -d com.apple.quarantine ~/Applications/Markewer.app
+xattr -d com.apple.quarantine ~/Applications/Arandu.app
 ```
 
 Ou: clique com botão direito no app → "Abrir" → confirme.
@@ -91,13 +91,13 @@ make install
 
 # Criar DMG de distribuição
 make dist
-# → dist/Markewer-1.0.dmg
+# → dist/Arandu-1.0.dmg
 ```
 
 ## Estrutura
 
 ```
-Sources/Markewer/
+Sources/Arandu/
 ├── main.swift              # Código principal (AppDelegate, WindowController, renderer)
 └── Resources/
     ├── style.css           # CSS estilo Typora

@@ -30,6 +30,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: apps/macos/dist/Markewer-1.0.dmg
+          files: apps/macos/dist/Arandu.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

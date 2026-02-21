@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui-org/nicegui/main/nicegui/static/tauri.conf.schema.json",
-  "productName": "Markewer",
+  "productName": "Arandu",
   "version": "0.1.0",
-  "identifier": "com.devitools.markewer",
+  "identifier": "com.devitools.arandu",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420"
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "Markewer",
+        "title": "Arandu",
         "width": 1100,
         "height": 760,
         "minWidth": 500,
@@ -46,7 +46,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/Devitools/markewer/releases/latest/download/latest.json"
+        "https://github.com/Devitools/arandu/releases/latest/download/latest.json"
       ],
       "pubkey": ""
     }

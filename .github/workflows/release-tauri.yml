@@ -63,6 +63,6 @@ jobs:
         with:
           projectPath: apps/tauri
           tagName: ${{ github.ref_name }}
-          releaseName: "Markewer ${{ github.ref_name }}"
+          releaseName: "Arandu ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false

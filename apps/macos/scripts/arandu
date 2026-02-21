@@ -1,14 +1,14 @@
 #!/bin/bash
-# Markewer CLI — opens Markdown files with the Markewer app
-# Usage: markewer [file.md ...]
+# Arandu CLI — opens Markdown files with the Arandu app
+# Usage: arandu [file.md ...]
 
 # Prefer /Applications, fall back to ~/Applications
-if [ -d "/Applications/Markewer.app" ]; then
-    APP="/Applications/Markewer.app"
-elif [ -d "$HOME/Applications/Markewer.app" ]; then
-    APP="$HOME/Applications/Markewer.app"
+if [ -d "/Applications/Arandu.app" ]; then
+    APP="/Applications/Arandu.app"
+elif [ -d "$HOME/Applications/Arandu.app" ]; then
+    APP="$HOME/Applications/Arandu.app"
 else
-    echo "Markewer.app not found. Run 'make install' first." >&2
+    echo "Arandu.app not found. Run 'make install' first." >&2
     exit 1
 fi
 

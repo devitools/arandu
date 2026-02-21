@@ -13,11 +13,11 @@
   });
 
   var themes = ["system", "light", "dark"];
-  var current = localStorage.getItem("markewer-site-theme") || "system";
+  var current = localStorage.getItem("arandu-site-theme") || "system";
 
   function applyTheme(theme) {
     current = theme;
-    localStorage.setItem("markewer-site-theme", theme);
+    localStorage.setItem("arandu-site-theme", theme);
     document.documentElement.classList.remove("light", "dark");
     if (theme !== "system") document.documentElement.classList.add(theme);
   }
@@ -31,6 +31,19 @@
   }
 
   applyTheme(current);
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("visible");
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll(".fade-in").forEach(function (el) {
+    observer.observe(el);
+  });
 
   document.querySelectorAll('a[href^="#"]').forEach(function (a) {
     a.addEventListener("click", function (e) {

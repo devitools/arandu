@@ -1,10 +1,10 @@
 [package]
-name = "markewer"
+name = "arandu"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "markewer_lib"
+name = "arandu_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

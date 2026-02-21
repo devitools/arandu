@@ -150,7 +150,7 @@ class MarkdownWindowController: NSObject,
 
     init(fileURL: URL) {
         self.currentURL = fileURL
-        if let saved = UserDefaults.standard.string(forKey: "markewer.theme"),
+        if let saved = UserDefaults.standard.string(forKey: "arandu.theme"),
            let theme = Theme(rawValue: saved) {
             self.currentTheme = theme
         }
@@ -220,12 +220,12 @@ class MarkdownWindowController: NSObject,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
-        window.title    = "Markewer"
+        window.title    = "Arandu"
         window.subtitle = currentURL.lastPathComponent
         window.contentView = splitView
         window.delegate    = self
         window.center()
-        window.setFrameAutosaveName("Markewer-\(currentURL.path)")
+        window.setFrameAutosaveName("Arandu-\(currentURL.path)")
         window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 500, height: 400)
 
@@ -281,7 +281,7 @@ class MarkdownWindowController: NSObject,
             webView.appearance = NSAppearance(named: .darkAqua)
         }
         updateThemeIcon(for: theme)
-        UserDefaults.standard.set(theme.rawValue, forKey: "markewer.theme")
+        UserDefaults.standard.set(theme.rawValue, forKey: "arandu.theme")
     }
 
     func updateThemeIcon(for theme: Theme) {
@@ -394,9 +394,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // App menu
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Markewer", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Arandu", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Markewer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Arandu", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appMenuItem = NSMenuItem()
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
