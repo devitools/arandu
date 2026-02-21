@@ -20,7 +20,7 @@ build: generate
 	    CODE_SIGN_IDENTITY="-" \
 	    CODE_SIGNING_REQUIRED=NO \
 	    CODE_SIGNING_ALLOWED=NO \
-	    | xcpretty 2>/dev/null || cat
+	    $(if $(shell which xcpretty 2>/dev/null),| xcpretty,)
 
 install: build
 	@echo "Installing $(APP_NAME) to /Applications..."
