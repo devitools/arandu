@@ -1,8 +1,10 @@
 #!/bin/bash
 # install.sh — Markewer installer
-# Usage: ./install.sh [/path/to/Markewer.app]
+# Usage:
+#   Local:  ./install.sh [/path/to/Markewer.app]
+#   Remote: curl -fsSL https://raw.githubusercontent.com/devitools/markewer/main/scripts/install.sh | bash
 
-set -euo pipefail
+set -eo pipefail
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -17,17 +19,55 @@ warn() { echo -e "${YELLOW}⚠${RESET}  $*"; }
 info() { echo -e "  $*"; }
 
 # ── Resolve app path ──────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="devitools/markewer"
+CLEANUP_DMG=false
+
+if [ ${#BASH_SOURCE[@]} -gt 0 ] && [ -n "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
 
 if [ $# -ge 1 ]; then
     APP_SRC="$1"
-else
+elif [ -n "$SCRIPT_DIR" ]; then
     APP_SRC="$SCRIPT_DIR/Markewer.app"
+else
+    info "Downloading Markewer..."
+
+    VERSION="${VERSION:-latest}"
+    if [ "$VERSION" = "latest" ]; then
+        DMG_URL="https://github.com/$REPO/releases/latest/download/Markewer.dmg"
+    else
+        DMG_URL="https://github.com/$REPO/releases/download/v${VERSION}/Markewer.dmg"
+    fi
+
+    TMPDIR_DL="$(mktemp -d)"
+    DMG_PATH="$TMPDIR_DL/Markewer.dmg"
+
+    if ! curl -fSL --progress-bar -o "$DMG_PATH" "$DMG_URL"; then
+        err "Failed to download DMG from: $DMG_URL"
+        rm -rf "$TMPDIR_DL"
+        exit 1
+    fi
+
+    MOUNT_POINT="$(mktemp -d)"
+    if ! hdiutil attach "$DMG_PATH" -nobrowse -quiet -mountpoint "$MOUNT_POINT"; then
+        err "Failed to mount DMG"
+        rm -rf "$TMPDIR_DL"
+        exit 1
+    fi
+
+    APP_SRC="$MOUNT_POINT/Markewer.app"
+    CLEANUP_DMG=true
 fi
 
 if [ ! -d "$APP_SRC" ]; then
     err "Markewer.app not found at: $APP_SRC"
-    info "Usage: $0 [/path/to/Markewer.app]"
+    if [ "$CLEANUP_DMG" = "true" ]; then
+        hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+        rm -rf "$TMPDIR_DL"
+    fi
     exit 1
 fi
 
@@ -134,6 +174,12 @@ info "  markewer README.md          # Open a single file"
 info "  markewer *.md               # Open multiple files"
 info "  markewer                    # Launch the app"
 echo ""
+
+# ── 5. Clean up DMG ──────────────────────────────────────────────────────────
+if [ "$CLEANUP_DMG" = "true" ]; then
+    hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+    rm -rf "$TMPDIR_DL"
+fi
 
 # Warn if CLI is in ~/.local/bin and not on PATH
 if [ "$CLI_LOCATION" = "$CLI_FALLBACK" ]; then
