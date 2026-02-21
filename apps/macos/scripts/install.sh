@@ -37,7 +37,8 @@ else
 
     ARCH="$(uname -m)"
     case "$ARCH" in
-        arm64) ARCH="aarch64" ;;
+        arm64)  ARCH="aarch64" ;;
+        x86_64) ARCH="x64" ;;
     esac
 
     VERSION="${VERSION:-latest}"
