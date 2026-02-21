@@ -35,16 +35,20 @@
     },
     "macOS": {
       "minimumSystemVersion": "13.0"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "description": "Markdown Document",
+        "contentTypes": ["text/markdown"]
+      },
+      {
+        "ext": "markdown",
+        "description": "Markdown Document",
+        "contentTypes": ["text/markdown"]
+      }
+    ]
   },
-  "fileAssociations": [
-    {
-      "ext": ["md", "markdown"],
-      "name": "Markdown Document",
-      "mimeType": "text/markdown",
-      "role": "Viewer"
-    }
-  ],
   "plugins": {
     "cli": {
       "args": [
