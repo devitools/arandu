@@ -4,6 +4,8 @@
   "version": "0.2.0",
   "identifier": "com.devitools.arandu",
   "build": {
+    "beforeDevCommand": "npm run dev:server",
+    "devUrl": "http://localhost:1420",
     "frontendDist": "../src"
   },
   "app": {
