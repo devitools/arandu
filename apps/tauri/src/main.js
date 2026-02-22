@@ -353,57 +353,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Bottom bar event listeners
-document.getElementById("bottom-bar-add-comment").addEventListener("click", () => {
-  if (!selectedBlock) return;
-
-  const modal = document.getElementById("comment-modal");
-  const preview = document.getElementById("comment-block-preview");
-  const input = document.getElementById("comment-input");
-
-  preview.textContent = selectedBlock.textContent.substring(0, 100) + "...";
-  input.value = "";
-  modal.style.display = "flex";
-  input.focus();
-});
-
-document.getElementById("comment-submit").addEventListener("click", () => {
-  const text = document.getElementById("comment-input").value.trim();
-  if (text) {
-    addComment(text);
-    document.getElementById("comment-modal").style.display = "none";
-  }
-});
-
-document.getElementById("comment-cancel").addEventListener("click", () => {
-  document.getElementById("comment-modal").style.display = "none";
-});
-
-document.getElementById("bottom-bar-generate").addEventListener("click", () => {
-  const modal = document.getElementById("review-modal");
-  const output = document.getElementById("review-output");
-
-  output.value = generateReviewPrompt();
-  modal.style.display = "flex";
-});
-
-document.getElementById("review-close").addEventListener("click", () => {
-  document.getElementById("review-modal").style.display = "none";
-});
-
-document.getElementById("review-copy").addEventListener("click", async () => {
-  const text = document.getElementById("review-output").value;
-
-  try {
-    await window.__TAURI__.clipboardManager.writeText(text);
-    alert("Review prompt copied to clipboard! Paste into your coding agent.");
-    document.getElementById("review-modal").style.display = "none";
-  } catch (e) {
-    console.error("Failed to copy:", e);
-    alert("Failed to copy to clipboard");
-  }
-});
-
 document.getElementById("btn-theme").addEventListener("click", toggleTheme);
 document.getElementById("btn-refresh").addEventListener("click", () => {
   if (currentPath) loadFile(currentPath);
@@ -505,3 +454,54 @@ applyTheme(currentTheme);
 if (!currentPath) {
   document.body.classList.add("no-file");
 }
+
+// Bottom bar and comment event listeners
+document.getElementById("bottom-bar-add-comment").addEventListener("click", () => {
+  if (!selectedBlock) return;
+
+  const modal = document.getElementById("comment-modal");
+  const preview = document.getElementById("comment-block-preview");
+  const input = document.getElementById("comment-input");
+
+  preview.textContent = selectedBlock.textContent.substring(0, 100) + "...";
+  input.value = "";
+  modal.style.display = "flex";
+  input.focus();
+});
+
+document.getElementById("comment-submit").addEventListener("click", () => {
+  const text = document.getElementById("comment-input").value.trim();
+  if (text) {
+    addComment(text);
+    document.getElementById("comment-modal").style.display = "none";
+  }
+});
+
+document.getElementById("comment-cancel").addEventListener("click", () => {
+  document.getElementById("comment-modal").style.display = "none";
+});
+
+document.getElementById("bottom-bar-generate").addEventListener("click", () => {
+  const modal = document.getElementById("review-modal");
+  const output = document.getElementById("review-output");
+
+  output.value = generateReviewPrompt();
+  modal.style.display = "flex";
+});
+
+document.getElementById("review-close").addEventListener("click", () => {
+  document.getElementById("review-modal").style.display = "none";
+});
+
+document.getElementById("review-copy").addEventListener("click", async () => {
+  const text = document.getElementById("review-output").value;
+
+  try {
+    await window.__TAURI__.clipboardManager.writeText(text);
+    alert("Review prompt copied to clipboard! Paste into your coding agent.");
+    document.getElementById("review-modal").style.display = "none";
+  } catch (e) {
+    console.error("Failed to copy:", e);
+    alert("Failed to copy to clipboard");
+  }
+});
