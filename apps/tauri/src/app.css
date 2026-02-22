@@ -352,6 +352,7 @@ html.dark link[media*="light"] { media: not all; }
 #bottom-bar {
   --bottom-bar-collapsed-height: 48px;
   --bottom-bar-padding: 64px;
+
   position: fixed;
   bottom: 0;
   left: 0;

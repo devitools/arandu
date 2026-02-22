@@ -18,6 +18,7 @@ let currentTheme = localStorage.getItem("arandu-theme") || "system";
 let currentPath = null;
 let commentsData = { version: "1.0", file_hash: "", comments: [] };
 let selectedBlocks = [];
+let saveQueue = Promise.resolve();
 
 function applyTheme(theme) {
   currentTheme = theme;
@@ -169,20 +170,21 @@ async function loadCommentsForFile(markdownPath) {
   }
 }
 
-async function saveCommentsForFile() {
+function saveCommentsForFile() {
   if (!currentPath) return;
-  try {
-    await invoke("save_comments", {
-      markdownPath: currentPath,
-      commentsData
+  const path = currentPath;
+  const data = JSON.parse(JSON.stringify(commentsData));
+  saveQueue = saveQueue
+    .then(() => invoke("save_comments", { markdownPath: path, commentsData: data }))
+    .then(() => {
+      const banner = document.getElementById("save-error-banner");
+      if (banner) banner.style.display = "none";
+    })
+    .catch((e) => {
+      console.error("Failed to save comments:", e);
+      const banner = document.getElementById("save-error-banner");
+      if (banner) banner.style.display = "flex";
     });
-  } catch (e) {
-    console.error("Failed to save comments:", e);
-    const banner = document.getElementById("save-error-banner");
-    if (banner) {
-      banner.style.display = "flex";
-    }
-  }
 }
 
 function addComment(text) {
