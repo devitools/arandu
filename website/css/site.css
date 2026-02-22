@@ -584,6 +584,23 @@ html.dark .code-string { color: #7ee787; }
     justify-content: center;
 }
 
+.brew-hint {
+    margin-top: 16px;
+    margin-bottom: 8px !important;
+    font-size: 0.8rem !important;
+}
+
+.brew-cmd {
+    display: block;
+    font-size: 0.75rem;
+    background: var(--code-bg);
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    word-break: break-all;
+    user-select: all;
+}
+
 /* === Footer === */
 
 footer {
