@@ -311,13 +311,15 @@ pub fn run() {
                         let _ = handle.emit("start-recording", ());
 
                         let recorder_state = handle.state::<whisper::commands::RecorderState>();
-                        if let Err(e) = whisper::commands::start_recording(recorder_state) {
+                        if let Err(e) = whisper::commands::start_recording(recorder_state, handle.clone()) {
                             eprintln!("Failed to start recording: {}", e);
                             let _ = handle.emit("recording-error", e);
                         }
                     }
                     ShortcutState::Released => {
                         let _ = handle.emit("stop-recording", ());
+
+                        std::thread::sleep(std::time::Duration::from_millis(10));
 
                         let recorder_state = handle.state::<whisper::commands::RecorderState>();
                         let transcriber_state = handle.state::<whisper::commands::TranscriberState>();
@@ -402,6 +404,8 @@ pub fn run() {
             whisper::commands::set_active_model,
             whisper::commands::set_shortcut,
             whisper::commands::check_audio_permissions,
+            whisper::commands::list_audio_devices,
+            whisper::commands::set_audio_device,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

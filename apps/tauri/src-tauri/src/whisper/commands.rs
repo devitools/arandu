@@ -9,9 +9,15 @@ pub struct RecorderState(pub Mutex<Option<AudioRecorder>>);
 pub struct TranscriberState(pub Mutex<Option<WhisperTranscriber>>);
 
 #[tauri::command]
-pub fn start_recording(state: tauri::State<RecorderState>) -> Result<(), String> {
+pub fn start_recording(
+    state: tauri::State<RecorderState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let settings = model_manager::load_settings(&app_data_dir);
+
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    let mut recorder = AudioRecorder::new()?;
+    let mut recorder = AudioRecorder::new(settings.selected_device)?;
     recorder.start()?;
     *guard = Some(recorder);
     Ok(())
@@ -175,8 +181,27 @@ pub fn set_shortcut(shortcut: String, app: tauri::AppHandle) -> Result<(), Strin
 
 #[tauri::command]
 pub fn check_audio_permissions() -> Result<String, String> {
-    match AudioRecorder::new() {
+    match AudioRecorder::new(None) {
         Ok(_) => Ok("Microphone OK".to_string()),
         Err(e) => Err(e),
     }
+}
+
+#[tauri::command]
+pub fn list_audio_devices() -> Result<Vec<super::audio::AudioDevice>, String> {
+    super::audio::list_audio_devices()
+}
+
+#[tauri::command]
+pub fn set_audio_device(
+    device_name: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+
+    let mut settings = model_manager::load_settings(&app_data_dir);
+    settings.selected_device = device_name;
+    model_manager::save_settings(&app_data_dir, &settings)?;
+
+    Ok(())
 }

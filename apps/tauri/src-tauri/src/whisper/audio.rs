@@ -1,10 +1,40 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler, WindowFunction};
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 const WHISPER_SAMPLE_RATE: u32 = 16_000;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioDevice {
+    pub name: String,
+    pub is_default: bool,
+}
+
+pub fn list_audio_devices() -> Result<Vec<AudioDevice>, String> {
+    let host = cpal::default_host();
+    let default_device = host.default_input_device();
+    let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+
+    let devices: Vec<AudioDevice> = host
+        .input_devices()
+        .map_err(|e| format!("Failed to get input devices: {}", e))?
+        .filter_map(|device| {
+            device.name().ok().map(|name| {
+                let is_default = Some(&name) == default_name.as_ref();
+                AudioDevice { name, is_default }
+            })
+        })
+        .collect();
+
+    if devices.is_empty() {
+        return Err("No input devices found".to_string());
+    }
+
+    Ok(devices)
+}
 
 pub struct AudioRecorder {
     buffer: Arc<Mutex<Vec<f32>>>,
@@ -12,6 +42,7 @@ pub struct AudioRecorder {
     device_sample_rate: u32,
     device_channels: u16,
     last_audio_received: Arc<Mutex<Option<Instant>>>,
+    selected_device_name: Option<String>,
 }
 
 // SAFETY: cpal::Stream on macOS contains raw pointers (AudioObjectPropertyListener)
@@ -46,7 +77,7 @@ fn check_microphone_permission() -> Result<bool, String> {
 }
 
 impl AudioRecorder {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(device_name: Option<String>) -> Result<Self, String> {
         #[cfg(target_os = "macos")]
         {
             if !check_microphone_permission()? {
@@ -55,9 +86,17 @@ impl AudioRecorder {
         }
 
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No input device available.")?;
+
+        let device = if let Some(name) = &device_name {
+            host.input_devices()
+                .map_err(|e| format!("Failed to enumerate devices: {}", e))?
+                .find(|d| d.name().ok().as_ref() == Some(name))
+                .ok_or_else(|| format!("Device '{}' not found", name))?
+        } else {
+            host.default_input_device()
+                .ok_or("No input device available.")?
+        };
+
         let config = device
             .default_input_config()
             .map_err(|e| format!("Failed to get input config: {}", e))?;
@@ -68,6 +107,7 @@ impl AudioRecorder {
             device_sample_rate: config.sample_rate().0,
             device_channels: config.channels(),
             last_audio_received: Arc::new(Mutex::new(None)),
+            selected_device_name: device_name,
         })
     }
 
@@ -77,9 +117,17 @@ impl AudioRecorder {
         }
 
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No input device available")?;
+
+        let device = if let Some(name) = &self.selected_device_name {
+            host.input_devices()
+                .map_err(|e| format!("Failed to enumerate: {}", e))?
+                .find(|d| d.name().ok().as_ref() == Some(name))
+                .ok_or_else(|| format!("Device '{}' not found", name))?
+        } else {
+            host.default_input_device()
+                .ok_or("No input device available")?
+        };
+
         let config = device
             .default_input_config()
             .map_err(|e| format!("Failed to get input config: {}", e))?;
@@ -168,6 +216,8 @@ impl AudioRecorder {
     }
 
     pub fn stop(&mut self) -> Result<Vec<f32>, String> {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
         self.stream.take();
 
         let audio_received = {
@@ -187,6 +237,20 @@ impl AudioRecorder {
         if raw.is_empty() {
             return Err("No audio captured. Recording too short or microphone not working.".to_string());
         }
+
+        let rms: f32 = raw.iter().map(|&s| s * s).sum::<f32>() / raw.len() as f32;
+        let rms = rms.sqrt();
+
+        if rms < 0.001 {
+            return Err(format!(
+                "Audio too quiet (RMS: {:.6}). Speak louder or check microphone settings.",
+                rms
+            ));
+        }
+
+        eprintln!("Captured {} samples, RMS: {:.4}, duration: {:.2}s",
+            raw.len(), rms, raw.len() as f32 / WHISPER_SAMPLE_RATE as f32
+        );
 
         if self.device_sample_rate == WHISPER_SAMPLE_RATE {
             return Ok(raw);
