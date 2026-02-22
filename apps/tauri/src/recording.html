@@ -88,6 +88,7 @@
     const currentWindow = getCurrentWindow();
 
     currentWindow.onCloseRequested(async (event) => {
+      console.log("Recording window close requested");
       event.preventDefault();
       await currentWindow.hide();
     });

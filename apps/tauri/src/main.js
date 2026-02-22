@@ -5,9 +5,17 @@ const { getCurrentWindow } = window.__TAURI__.window;
 
 const currentWindow = getCurrentWindow();
 
+console.log("Registering onCloseRequested handler");
+
 currentWindow.onCloseRequested(async (event) => {
-  event.preventDefault();
-  await currentWindow.hide();
+  console.log("Close requested - preventing and hiding");
+  try {
+    event.preventDefault();
+    await currentWindow.hide();
+    console.log("Window hidden successfully");
+  } catch (error) {
+    console.error("Error in onCloseRequested:", error);
+  }
 });
 
 if (navigator.userAgent.includes("Mac")) {
@@ -269,6 +277,20 @@ document.getElementById("whisper-settings-close").addEventListener("click", () =
   hideModal("whisper-settings-modal");
 });
 
+document.addEventListener("DOMContentLoaded", () => {
+  const deviceSelect = document.getElementById("device-select");
+  if (deviceSelect) {
+    deviceSelect.addEventListener("change", async (e) => {
+      try {
+        const deviceName = e.target.value || null;
+        await invoke("set_audio_device", { deviceName });
+      } catch (err) {
+        console.error("Failed to set device:", err);
+      }
+    });
+  }
+});
+
 recordingBtn.addEventListener("click", async () => {
   if (!isRecording) {
     const modelLoaded = await invoke("is_model_loaded");
@@ -307,6 +329,22 @@ document.getElementById("whisper-settings-btn").addEventListener("click", () => 
 
 async function openWhisperSettings() {
   await loadModelList();
+
+  try {
+    const devices = await invoke("list_audio_devices");
+    const deviceSelect = document.getElementById("device-select");
+    deviceSelect.innerHTML = '<option value="">System Default</option>' + devices.map(d =>
+      `<option value="${d.name}">${d.name}${d.is_default ? ' (Default)' : ''}</option>`
+    ).join('');
+
+    const settings = await invoke("get_whisper_settings");
+    if (settings.selected_device) {
+      deviceSelect.value = settings.selected_device;
+    }
+  } catch (e) {
+    console.error("Failed to load audio devices:", e);
+  }
+
   const settings = await invoke("get_whisper_settings");
   document.getElementById("shortcut-input").value = settings.shortcut || "Alt+Space";
   showModal("whisper-settings-modal");

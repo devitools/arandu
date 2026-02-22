@@ -402,6 +402,44 @@ html.dark link[media*="light"] { media: not all; }
     background: rgba(255, 59, 48, 0.1);
 }
 
+/* Device selection */
+
+.setting-row {
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.setting-row label {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+.setting-select {
+    flex: 1;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.setting-select:hover {
+    border-color: var(--link);
+}
+
+.setting-select:focus {
+    outline: none;
+    border-color: var(--link);
+}
+
 /* Shortcut config */
 
 .shortcut-config {
