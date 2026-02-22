@@ -617,8 +617,8 @@ document.getElementById("save-error-dismiss").addEventListener("click", () => {
   if (banner) banner.style.display = "none";
 });
 
-// Click ONLY on title to toggle expand/collapse
-document.getElementById("bottom-bar-title").addEventListener("click", (e) => {
+// Toggle button to expand/collapse
+document.getElementById("bottom-bar-toggle").addEventListener("click", () => {
   toggleBottomBar();
 });
 

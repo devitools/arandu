@@ -48,6 +48,26 @@ html.macos #toolbar {
     align-items: center;
 }
 
+/* Icon button base style */
+.icon-button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    width: 26px;
+    padding: 0;
+    transition: background 0.15s ease;
+}
+
+.icon-button:hover {
+    background: var(--code-bg);
+}
+
 #toolbar button {
     background: none;
     border: 1px solid var(--border);
@@ -66,7 +86,17 @@ html.macos #toolbar {
 }
 
 #btn-theme {
-    width: 30px;
+    width: 26px;
+}
+
+#btn-theme svg {
+    width: 14px;
+    height: 14px;
+}
+
+#btn-refresh svg {
+    width: 14px;
+    height: 14px;
 }
 
 #toolbar #btn-refresh {
@@ -74,6 +104,7 @@ html.macos #toolbar {
     gap: 5px;
     font-size: 12px;
     font-family: var(--font-body);
+    width: auto;
 }
 
 #split {
@@ -350,20 +381,22 @@ html.dark link[media*="light"] { media: not all; }
 /* Bottom Bar */
 
 #bottom-bar {
-  --bottom-bar-collapsed-height: 48px;
+  --bottom-bar-collapsed-height: 46px;
   --bottom-bar-padding: 64px;
+  --bottom-bar-expanded-height: calc(100vh - 100px);
 
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--bottom-bar-collapsed-height);
+  height: var(--bottom-bar-expanded-height);
   background: var(--sidebar-bg);
-  border-top: 2px solid var(--border);
+  border-top: 1px solid var(--border);
   display: none;
   flex-direction: column;
   z-index: 100;
-  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(calc(100% - var(--bottom-bar-collapsed-height)));
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
@@ -372,7 +405,7 @@ html.dark link[media*="light"] { media: not all; }
 }
 
 #bottom-bar.expanded {
-  height: calc(100vh - 100px);
+  transform: translateY(0);
 }
 
 #bottom-bar-header {
@@ -382,13 +415,8 @@ html.dark link[media*="light"] { media: not all; }
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
-  cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-}
-
-#bottom-bar-header:hover {
-  background: var(--code-bg);
 }
 
 #bottom-bar-title {
@@ -415,14 +443,16 @@ html.dark link[media*="light"] { media: not all; }
   font-weight: 600;
 }
 
-#bottom-bar-title::after {
-  content: "▲";
-  font-size: 8px;
-  transition: transform 0.3s;
-  opacity: 0.5;
+#bottom-bar-toggle {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#bottom-bar.expanded #bottom-bar-title::after {
+#bottom-bar-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+#bottom-bar.expanded #bottom-bar-toggle {
   transform: rotate(180deg);
 }
 
