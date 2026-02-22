@@ -71,6 +71,12 @@ jobs:
             sed -i 's/"version": ".*"/"version": "${{ inputs.version }}"/' apps/tauri/src-tauri/tauri.conf.json
           fi
 
+      - name: Patch version in package.json
+        shell: bash
+        run: |
+          cd apps/tauri
+          npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -102,14 +108,15 @@ jobs:
           Copy-Item shared/*.css apps/tauri/src/ -Force -ErrorAction SilentlyContinue
           Copy-Item shared/*.js apps/tauri/src/ -Force -ErrorAction SilentlyContinue
 
-      - name: Write Apple API key to disk
-        if: matrix.platform == 'macos-latest'
-        env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
-        run: |
-          if [ -n "$APPLE_API_KEY_CONTENT" ]; then
-            echo "$APPLE_API_KEY_CONTENT" > /tmp/apple_api_key.p8
-          fi
+      # TODO: re-enable notarization when Apple servers are faster
+      # - name: Write Apple API key to disk
+      #   if: matrix.platform == 'macos-latest'
+      #   env:
+      #     APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+      #   run: |
+      #     if [ -n "$APPLE_API_KEY_CONTENT" ]; then
+      #       echo "$APPLE_API_KEY_CONTENT" > /tmp/apple_api_key.p8
+      #     fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -119,9 +126,6 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: /tmp/apple_api_key.p8
         with:
           projectPath: apps/tauri
           tagName: ${{ inputs.tag_name }}
