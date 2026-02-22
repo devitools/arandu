@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "python3 -m http.server 1420 --directory ../src"
+    "beforeDevCommand": "npx serve ../src -l 1420 -n"
   },
   "app": {
     "withGlobalTauri": true,
