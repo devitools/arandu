@@ -10,7 +10,7 @@
     </linearGradient>
   </defs>
 
-  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
 
   <path fill="url(#glyph)" fill-rule="evenodd" d="
     M 512 170 L 774 830 L 250 830 Z

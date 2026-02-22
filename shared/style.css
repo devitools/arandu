@@ -14,7 +14,7 @@
     --sidebar-bg: #f5f5f7;
     --font-body: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
     --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    --max-width: 860px;
+    --max-width: 1100px;
 }
 
 @media (prefers-color-scheme: dark) {
