@@ -16,6 +16,8 @@ const THEME_ICONS = {
 
 let currentTheme = localStorage.getItem("arandu-theme") || "system";
 let currentPath = null;
+let commentsData = { version: "1.0", file_hash: "", comments: [] };
+let selectedBlock = null;
 
 function applyTheme(theme) {
   currentTheme = theme;
@@ -55,15 +57,35 @@ async function loadFile(path) {
 
     document.getElementById("content").innerHTML = html;
 
-    let idx = 0;
-    document.querySelectorAll("#content h1, #content h2, #content h3, #content h4").forEach((el) => {
-      el.id = "mkw-heading-" + idx++;
+    // Assign IDs to all commentable blocks
+    let headingIdx = 0, paraIdx = 0, listIdx = 0, codeIdx = 0, quoteIdx = 0;
+
+    document.querySelectorAll("#content h1, #content h2, #content h3, #content h4, #content h5, #content h6").forEach((el) => {
+      el.id = "mkw-heading-" + headingIdx++;
+      el.classList.add("commentable-block");
     });
 
-    document.querySelectorAll("#content li").forEach((li) => {
-      if (li.querySelector('input[type="checkbox"]')) {
-        li.style.listStyle = "none";
+    document.querySelectorAll("#content p").forEach((el) => {
+      el.id = "mkw-para-" + paraIdx++;
+      el.classList.add("commentable-block");
+    });
+
+    document.querySelectorAll("#content li").forEach((el) => {
+      el.id = "mkw-list-" + listIdx++;
+      el.classList.add("commentable-block");
+      if (el.querySelector('input[type="checkbox"]')) {
+        el.style.listStyle = "none";
       }
+    });
+
+    document.querySelectorAll("#content pre").forEach((el) => {
+      el.id = "mkw-code-" + codeIdx++;
+      el.classList.add("commentable-block");
+    });
+
+    document.querySelectorAll("#content blockquote").forEach((el) => {
+      el.id = "mkw-quote-" + quoteIdx++;
+      el.classList.add("commentable-block");
     });
 
     hljs.highlightAll();
@@ -74,6 +96,9 @@ async function loadFile(path) {
 
     await invoke("watch_file", { path });
     currentPath = path;
+
+    // Load comments for this file
+    await loadCommentsForFile(path);
   } catch (e) {
     console.error("Failed to load file:", e);
   }
@@ -101,6 +126,283 @@ async function openFileDialog() {
   });
   if (path) loadFile(path);
 }
+
+// Comment management functions
+
+async function loadCommentsForFile(markdownPath) {
+  try {
+    commentsData = await invoke("load_comments", { markdownPath });
+    const currentHash = await invoke("hash_file", { path: markdownPath });
+
+    if (commentsData.file_hash && commentsData.file_hash !== currentHash) {
+      console.warn("Comments may be outdated - file has changed");
+    }
+
+    commentsData.file_hash = currentHash;
+    renderCommentBadges();
+    updateBottomBar();
+  } catch (e) {
+    console.error("Failed to load comments:", e);
+    commentsData = { version: "1.0", file_hash: "", comments: [] };
+  }
+}
+
+async function saveCommentsForFile() {
+  if (!currentPath) return;
+  try {
+    await invoke("save_comments", {
+      markdownPath: currentPath,
+      commentsData
+    });
+  } catch (e) {
+    console.error("Failed to save comments:", e);
+  }
+}
+
+function addComment(text) {
+  if (!selectedBlock) return;
+
+  const comment = {
+    id: crypto.randomUUID(),
+    block_id: selectedBlock.id,
+    block_type: selectedBlock.tagName.toLowerCase(),
+    block_text: selectedBlock.textContent.substring(0, 100),
+    text: text,
+    timestamp: Date.now(),
+    resolved: false,
+  };
+
+  commentsData.comments.push(comment);
+  saveCommentsForFile();
+  renderCommentBadges();
+  updateBottomBar();
+
+  // Clear selection
+  selectedBlock.classList.remove("selected");
+  selectedBlock = null;
+  document.getElementById("bottom-bar-add-comment").style.display = "none";
+}
+
+function deleteComment(commentId) {
+  commentsData.comments = commentsData.comments.filter(c => c.id !== commentId);
+  saveCommentsForFile();
+  renderCommentBadges();
+  updateBottomBar();
+}
+
+function toggleResolve(commentId) {
+  const comment = commentsData.comments.find(c => c.id === commentId);
+  if (comment) {
+    comment.resolved = !comment.resolved;
+    saveCommentsForFile();
+    updateBottomBar();
+  }
+}
+
+function renderCommentBadges() {
+  // Remove existing badges
+  document.querySelectorAll(".comment-badge").forEach(el => el.remove());
+
+  // Group comments by block_id
+  const commentsByBlock = {};
+  commentsData.comments.forEach(comment => {
+    if (!commentsByBlock[comment.block_id]) {
+      commentsByBlock[comment.block_id] = [];
+    }
+    commentsByBlock[comment.block_id].push(comment);
+  });
+
+  // Add badges to blocks with comments
+  Object.keys(commentsByBlock).forEach(blockId => {
+    const block = document.getElementById(blockId);
+    if (!block) return;
+
+    const count = commentsByBlock[blockId].length;
+    const badge = document.createElement("div");
+    badge.className = "comment-badge";
+    badge.textContent = count;
+    badge.title = `${count} comment${count > 1 ? 's' : ''}`;
+
+    badge.onclick = (e) => {
+      e.stopPropagation();
+      scrollToCommentInBottomBar(blockId);
+    };
+
+    block.style.position = "relative";
+    block.appendChild(badge);
+  });
+}
+
+function scrollToCommentInBottomBar(blockId) {
+  const commentItem = document.querySelector(`[data-block-id="${blockId}"]`);
+  if (commentItem) {
+    commentItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    commentItem.classList.add("highlight");
+    setTimeout(() => commentItem.classList.remove("highlight"), 1500);
+  }
+}
+
+function selectBlock(block) {
+  // Remove previous selection
+  document.querySelectorAll(".commentable-block.selected").forEach(el => {
+    el.classList.remove("selected");
+  });
+
+  // Add selection to clicked block
+  block.classList.add("selected");
+  selectedBlock = block;
+
+  // Show add comment button in bottom bar
+  document.getElementById("bottom-bar-add-comment").style.display = "block";
+}
+
+function updateBottomBar() {
+  const count = commentsData.comments.length;
+  document.getElementById("comment-count").textContent = count;
+
+  const list = document.getElementById("bottom-bar-list");
+  list.innerHTML = "";
+
+  if (count === 0) {
+    list.innerHTML = '<div class="bottom-bar-empty">No comments. Select a block and click "+ Add Comment"</div>';
+    return;
+  }
+
+  commentsData.comments.forEach(comment => {
+    const item = document.createElement("div");
+    item.className = "bottom-bar-item" + (comment.resolved ? " resolved" : "");
+    item.dataset.blockId = comment.block_id;
+
+    const lineIndicator = document.createElement("div");
+    lineIndicator.className = "line-indicator";
+    const blockNum = comment.block_id.match(/\d+$/)?.[0] || "?";
+    lineIndicator.textContent = `L${blockNum}`;
+
+    const content = document.createElement("div");
+    content.className = "comment-content";
+
+    const blockPreview = document.createElement("div");
+    blockPreview.className = "block-preview";
+    blockPreview.textContent = comment.block_text;
+    blockPreview.onclick = () => {
+      const block = document.getElementById(comment.block_id);
+      if (block) block.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+
+    const commentText = document.createElement("div");
+    commentText.className = "comment-text";
+    commentText.textContent = comment.text;
+
+    const actions = document.createElement("div");
+    actions.className = "comment-actions";
+
+    const resolveBtn = document.createElement("button");
+    resolveBtn.textContent = comment.resolved ? "Unresolve" : "Resolve";
+    resolveBtn.onclick = () => toggleResolve(comment.id);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = () => {
+      if (confirm("Delete this comment?")) deleteComment(comment.id);
+    };
+
+    actions.appendChild(resolveBtn);
+    actions.appendChild(deleteBtn);
+
+    content.appendChild(blockPreview);
+    content.appendChild(commentText);
+    content.appendChild(actions);
+
+    item.appendChild(lineIndicator);
+    item.appendChild(content);
+    list.appendChild(item);
+  });
+}
+
+function generateReviewPrompt() {
+  const unresolvedComments = commentsData.comments.filter(c => !c.resolved);
+
+  if (unresolvedComments.length === 0) {
+    return "# PLAN REVIEW\n\nNo unresolved comments. All feedback has been addressed.";
+  }
+
+  let prompt = `# PLAN REVIEW\n\n`;
+  prompt += `File: \`${currentPath}\`\n`;
+  prompt += `Generated: ${new Date().toLocaleString()}\n\n`;
+  prompt += `---\n\n`;
+  prompt += `## Review Feedback\n\n`;
+  prompt += `I've reviewed the plan and have ${unresolvedComments.length} comment${unresolvedComments.length > 1 ? 's' : ''} for improvement:\n\n`;
+
+  unresolvedComments.forEach((comment, idx) => {
+    prompt += `### ${idx + 1}. ${comment.block_type.toUpperCase()}: "${comment.block_text}"\n\n`;
+    prompt += `**Feedback:**\n${comment.text}\n\n`;
+    prompt += `---\n\n`;
+  });
+
+  prompt += `## Summary\n\n`;
+  prompt += `Please address the ${unresolvedComments.length} feedback point${unresolvedComments.length > 1 ? 's' : ''} above and update the plan accordingly.\n`;
+
+  return prompt;
+}
+
+// Block selection event listener
+document.addEventListener("click", (e) => {
+  const block = e.target.closest(".commentable-block");
+  if (block && !e.target.closest(".comment-badge")) {
+    selectBlock(block);
+  }
+});
+
+// Bottom bar event listeners
+document.getElementById("bottom-bar-add-comment").addEventListener("click", () => {
+  if (!selectedBlock) return;
+
+  const modal = document.getElementById("comment-modal");
+  const preview = document.getElementById("comment-block-preview");
+  const input = document.getElementById("comment-input");
+
+  preview.textContent = selectedBlock.textContent.substring(0, 100) + "...";
+  input.value = "";
+  modal.style.display = "flex";
+  input.focus();
+});
+
+document.getElementById("comment-submit").addEventListener("click", () => {
+  const text = document.getElementById("comment-input").value.trim();
+  if (text) {
+    addComment(text);
+    document.getElementById("comment-modal").style.display = "none";
+  }
+});
+
+document.getElementById("comment-cancel").addEventListener("click", () => {
+  document.getElementById("comment-modal").style.display = "none";
+});
+
+document.getElementById("bottom-bar-generate").addEventListener("click", () => {
+  const modal = document.getElementById("review-modal");
+  const output = document.getElementById("review-output");
+
+  output.value = generateReviewPrompt();
+  modal.style.display = "flex";
+});
+
+document.getElementById("review-close").addEventListener("click", () => {
+  document.getElementById("review-modal").style.display = "none";
+});
+
+document.getElementById("review-copy").addEventListener("click", async () => {
+  const text = document.getElementById("review-output").value;
+
+  try {
+    await window.__TAURI__.clipboardManager.writeText(text);
+    alert("Review prompt copied to clipboard! Paste into your coding agent.");
+    document.getElementById("review-modal").style.display = "none";
+  } catch (e) {
+    console.error("Failed to copy:", e);
+    alert("Failed to copy to clipboard");
+  }
+});
 
 document.getElementById("btn-theme").addEventListener("click", toggleTheme);
 document.getElementById("btn-refresh").addEventListener("click", () => {
