@@ -5,8 +5,7 @@
   "identifier": "com.devitools.arandu",
   "build": {
     "frontendDist": "../src",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npx serve ../src -l 1420 -n"
+    "devUrl": "http://localhost:1420"
   },
   "app": {
     "withGlobalTauri": true,
@@ -60,7 +59,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/Devitools/arandu/releases/latest/download/latest.json"
+        "https://github.com/devitools/arandu/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3NzBBMjNDRDRBQ0U4QjMKUldTejZLelVQS0p3WjliTlZPTFo3SkZNditaUktEblA3b2xMU3VsVEdHNklXRUVUeiswVkw3bE4K"
     }
