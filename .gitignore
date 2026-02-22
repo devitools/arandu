@@ -91,3 +91,6 @@ yarn-error.log*
 
 # Debug symbols
 *.dSYM/
+
+# Certificates
+.certificates/
