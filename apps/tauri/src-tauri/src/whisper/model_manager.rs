@@ -58,10 +58,16 @@ pub struct WhisperSettings {
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
     pub selected_device: Option<String>,
+    #[serde(default = "default_long_recording_threshold")]
+    pub long_recording_threshold: u32,
 }
 
 fn default_shortcut() -> String {
     DEFAULT_SHORTCUT.to_string()
+}
+
+fn default_long_recording_threshold() -> u32 {
+    60
 }
 
 impl Default for WhisperSettings {
@@ -71,6 +77,7 @@ impl Default for WhisperSettings {
             language: "auto".to_string(),
             shortcut: DEFAULT_SHORTCUT.to_string(),
             selected_device: None,
+            long_recording_threshold: 60,
         }
     }
 }

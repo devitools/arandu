@@ -83,6 +83,7 @@ struct WatcherState(Mutex<Option<notify::RecommendedWatcher>>);
 struct InitialFile(Mutex<Option<String>>);
 
 pub struct ExplicitQuit(pub Arc<AtomicBool>);
+pub struct IsRecording(pub Arc<AtomicBool>);
 
 #[tauri::command]
 fn watch_file(path: String, app: tauri::AppHandle, state: tauri::State<WatcherState>) -> Result<(), String> {
@@ -191,6 +192,54 @@ fn hide_recording_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn write_clipboard(text: String, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard()
+        .write_text(text)
+        .map_err(|e| format!("Failed to write to clipboard: {}", e))
+}
+
+pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
+    let is_recording = handle.state::<IsRecording>();
+    let currently_recording = is_recording.0.load(Ordering::Relaxed);
+
+    if currently_recording {
+        let _ = handle.emit("stop-recording", ());
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let recorder_state = handle.state::<whisper::commands::RecorderState>();
+        let transcriber_state = handle.state::<whisper::commands::TranscriberState>();
+
+        match whisper::commands::stop_and_transcribe(recorder_state, transcriber_state, handle.clone()) {
+            Ok(text) => {
+                if !text.is_empty() {
+                    use tauri_plugin_clipboard_manager::ClipboardExt;
+                    let _ = handle.clipboard().write_text(text.clone());
+                    let _ = handle.emit("transcription-complete", text);
+                }
+            }
+            Err(e) => {
+                eprintln!("Transcription failed: {}", e);
+                let _ = handle.emit("transcription-error", e);
+            }
+        }
+    } else {
+        if let Some(window) = handle.get_webview_window("recording") {
+            let _ = window.show();
+        }
+
+        let _ = handle.emit("start-recording-shortcut", ());
+
+        let recorder_state = handle.state::<whisper::commands::RecorderState>();
+        if let Err(e) = whisper::commands::start_recording(recorder_state, handle.clone()) {
+            eprintln!("Failed to start recording: {}", e);
+            let _ = handle.emit("recording-error", e);
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -284,6 +333,7 @@ pub fn run() {
         .manage(WatcherState(Mutex::new(None)))
         .manage(InitialFile(Mutex::new(None)))
         .manage(ExplicitQuit(Arc::new(AtomicBool::new(false))))
+        .manage(IsRecording(Arc::new(AtomicBool::new(false))))
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)))
         .setup(|app| {
@@ -304,47 +354,9 @@ pub fn run() {
             app.global_shortcut().on_shortcut(shortcut_str.as_str(), move |_app, _shortcut, event| {
                 match event.state {
                     ShortcutState::Pressed => {
-                        if let Some(window) = handle.get_webview_window("recording") {
-                            let _ = window.show();
-                        }
-
-                        let _ = handle.emit("start-recording", ());
-
-                        let recorder_state = handle.state::<whisper::commands::RecorderState>();
-                        if let Err(e) = whisper::commands::start_recording(recorder_state, handle.clone()) {
-                            eprintln!("Failed to start recording: {}", e);
-                            let _ = handle.emit("recording-error", e);
-                        }
+                        handle_recording_toggle(&handle);
                     }
-                    ShortcutState::Released => {
-                        let _ = handle.emit("stop-recording", ());
-
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-
-                        let recorder_state = handle.state::<whisper::commands::RecorderState>();
-                        let transcriber_state = handle.state::<whisper::commands::TranscriberState>();
-
-                        match whisper::commands::stop_and_transcribe(
-                            recorder_state,
-                            transcriber_state,
-                            handle.clone()
-                        ) {
-                            Ok(text) => {
-                                if !text.is_empty() {
-                                    use tauri_plugin_clipboard_manager::ClipboardExt;
-                                    let _ = handle.clipboard().write_text(text);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Transcription failed: {}", e);
-                                let _ = handle.emit("transcription-error", e);
-                            }
-                        }
-
-                        if let Some(window) = handle.get_webview_window("recording") {
-                            let _ = window.hide();
-                        }
-                    }
+                    ShortcutState::Released => {}
                 }
             })?;
 
@@ -392,7 +404,10 @@ pub fn run() {
             dismiss_cli_prompt,
             show_recording_window,
             hide_recording_window,
+            write_clipboard,
             whisper::commands::start_recording,
+            whisper::commands::start_recording_button_mode,
+            whisper::commands::cancel_recording,
             whisper::commands::stop_and_transcribe,
             whisper::commands::load_whisper_model,
             whisper::commands::is_model_loaded,

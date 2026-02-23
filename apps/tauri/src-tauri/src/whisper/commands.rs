@@ -1,6 +1,7 @@
 use super::audio::AudioRecorder;
 use super::model_manager::{self, ModelStatus, WhisperSettings};
 use super::transcriber::WhisperTranscriber;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -13,13 +14,49 @@ pub fn start_recording(
     state: tauri::State<RecorderState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let is_recording = app.state::<crate::IsRecording>();
+    if is_recording.0.load(Ordering::Relaxed) {
+        return Err("Already recording".to_string());
+    }
+
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let settings = model_manager::load_settings(&app_data_dir);
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let mut recorder = AudioRecorder::new(settings.selected_device)?;
-    recorder.start()?;
+    recorder.start().map_err(|e| {
+        e
+    })?;
+
+    is_recording.0.store(true, Ordering::Relaxed);
     *guard = Some(recorder);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn start_recording_button_mode(
+    state: tauri::State<RecorderState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let result = start_recording(state, app.clone());
+
+    if result.is_ok() {
+        let _ = app.emit("start-recording-button", ());
+    }
+
+    result
+}
+
+#[tauri::command]
+pub fn cancel_recording(
+    state: tauri::State<RecorderState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let is_recording = app.state::<crate::IsRecording>();
+    is_recording.0.store(false, Ordering::Relaxed);
+
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    *guard = None;
     Ok(())
 }
 
@@ -29,6 +66,9 @@ pub fn stop_and_transcribe(
     transcriber_state: tauri::State<TranscriberState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    let is_recording = app.state::<crate::IsRecording>();
+    is_recording.0.store(false, Ordering::Relaxed);
+
     let audio = {
         let mut guard = recorder_state.0.lock().map_err(|e| e.to_string())?;
         match guard.take() {
@@ -152,22 +192,18 @@ pub fn set_active_model(
 pub fn set_shortcut(shortcut: String, app: tauri::AppHandle) -> Result<(), String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
-    // Unregister all existing shortcuts
     app.global_shortcut()
         .unregister_all()
         .map_err(|e| format!("Failed to unregister shortcuts: {}", e))?;
 
-    // Register the new shortcut
     let handle = app.clone();
     app.global_shortcut()
         .on_shortcut(shortcut.as_str(), move |_app, _shortcut, event| {
             match event.state {
                 tauri_plugin_global_shortcut::ShortcutState::Pressed => {
-                    let _ = handle.emit("start-recording", ());
+                    crate::handle_recording_toggle(&handle);
                 }
-                tauri_plugin_global_shortcut::ShortcutState::Released => {
-                    let _ = handle.emit("stop-recording", ());
-                }
+                tauri_plugin_global_shortcut::ShortcutState::Released => {}
             }
         })
         .map_err(|e| format!("Invalid shortcut '{}': {}", shortcut, e))?;
