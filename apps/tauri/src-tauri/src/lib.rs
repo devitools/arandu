@@ -532,7 +532,10 @@ pub fn run() {
                     if let Ok(path) = url.to_file_path() {
                         eprintln!("[DEBUG] Opened event received with path: {:?}", path);
                         // Canonicalize to ensure absolute path
-                        let abs_path = std::fs::canonicalize(&path).unwrap_or(path);
+                        let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|e| {
+                            eprintln!("[DEBUG] Canonicalize failed ({}), using as-is", e);
+                            path
+                        });
                         let path_str = abs_path.to_string_lossy().to_string();
                         eprintln!("[DEBUG] Emitting open-file with: {:?}", path_str);
                         let initial = app_handle.state::<InitialFile>();
