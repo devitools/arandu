@@ -841,6 +841,9 @@ html.dark link[media*="light"] { media: not all; }
   padding: 8px;
   border-radius: 4px;
   margin-bottom: 10px;
+  max-height: 80px;
+  overflow-y: auto;
+  overflow-wrap: break-word;
 }
 
 /* Review Modal */
