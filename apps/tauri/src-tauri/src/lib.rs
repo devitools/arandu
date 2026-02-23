@@ -10,6 +10,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[cfg(target_os = "macos")]
 mod cli_installer;
+#[cfg(unix)]
+mod ipc;
 mod tray;
 mod whisper;
 
@@ -349,7 +351,6 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Separate builder to allow conditional state management (e.g., for IPC socket in feat/unix-socket-ipc branch)
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())
@@ -392,10 +393,8 @@ pub fn run() {
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)));
 
-    // Conditional state management (placeholder for feat/unix-socket-ipc branch merge)
-    // When merging with feat/unix-socket-ipc, add:
-    // #[cfg(unix)]
-    // let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
+    #[cfg(unix)]
+    let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
 
     builder
         .setup(|app| {
@@ -404,14 +403,12 @@ pub fn run() {
 
             tray::setup(app)?;
 
-            // IPC socket setup (placeholder for feat/unix-socket-ipc branch merge)
-            // When merging with feat/unix-socket-ipc, add:
-            // #[cfg(unix)]
-            // {
-            //     if let Err(e) = ipc::setup(app) {
-            //         eprintln!("Failed to setup IPC socket: {}", e);
-            //     }
-            // }
+            #[cfg(unix)]
+            {
+                if let Err(e) = ipc::setup(app) {
+                    eprintln!("Failed to setup IPC socket: {}", e);
+                }
+            }
 
             let shortcut_str = if let Ok(app_data_dir) = app.path().app_data_dir() {
                 let settings = whisper::model_manager::load_settings(&app_data_dir);
@@ -516,13 +513,11 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, .. } = &event {
                 let quit_flag = app_handle.state::<ExplicitQuit>();
                 if quit_flag.0.load(Ordering::Relaxed) {
-                    // IPC socket cleanup (placeholder for feat/unix-socket-ipc branch merge)
-                    // When merging with feat/unix-socket-ipc, add:
-                    // #[cfg(unix)]
-                    // {
-                    //     let socket_state = app_handle.state::<ipc::SocketState>();
-                    //     ipc::cleanup(socket_state);
-                    // }
+                    #[cfg(unix)]
+                    {
+                        let socket_state = app_handle.state::<ipc::SocketState>();
+                        ipc::cleanup(socket_state);
+                    }
                     return;
                 }
                 api.prevent_exit();
