@@ -336,7 +336,7 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -372,8 +372,12 @@ pub fn run() {
         .manage(ExplicitQuit(Arc::new(AtomicBool::new(false))))
         .manage(IsRecording(Arc::new(AtomicBool::new(false))))
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
-        .manage(whisper::commands::TranscriberState(Mutex::new(None)))
-        .manage(ipc::SocketState(Mutex::new(None)))
+        .manage(whisper::commands::TranscriberState(Mutex::new(None)));
+
+    #[cfg(unix)]
+    let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
+
+    builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             setup_macos_menu(app)?;

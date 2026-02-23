@@ -25,15 +25,15 @@ pub fn setup(app: &tauri::App) -> Result<(), String> {
     let sock_path = socket_path()?;
     cleanup_stale_socket(&sock_path)?;
 
-    let state = app.state::<SocketState>();
-    if let Ok(mut guard) = state.0.lock() {
-        *guard = Some(sock_path.clone());
-    }
-
     let app_handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         match UnixListener::bind(&sock_path) {
             Ok(listener) => {
+                let state = app_handle.state::<SocketState>();
+                if let Ok(mut guard) = state.0.lock() {
+                    *guard = Some(sock_path.clone());
+                }
+
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
