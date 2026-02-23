@@ -97,3 +97,6 @@ yarn-error.log*
 
 # Plan review comments
 *.comments.json
+
+# Examples (private reference files)
+examples/
