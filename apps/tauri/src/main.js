@@ -559,6 +559,11 @@ document.getElementById("toolbar").addEventListener("mousedown", (e) => {
   getCurrentWindow().startDragging();
 });
 
+document.getElementById("toolbar").addEventListener("dblclick", async (e) => {
+  if (e.target.closest("button")) return;
+  await getCurrentWindow().toggleMaximize();
+});
+
 const sidebarHandle = document.getElementById("sidebar-handle");
 const sidebar = document.getElementById("sidebar");
 sidebarHandle.addEventListener("mousedown", (e) => {
