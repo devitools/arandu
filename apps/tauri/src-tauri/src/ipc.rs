@@ -5,18 +5,19 @@ use tauri::{Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
+// Public structs for reuse in tcp_ipc module
 #[derive(Deserialize)]
-struct IpcCommand {
-    command: String,
+pub struct IpcCommand {
+    pub command: String,
     #[serde(default)]
-    path: Option<String>,
+    pub path: Option<String>,
 }
 
 #[derive(Serialize)]
-struct IpcResponse {
-    success: bool,
+pub struct IpcResponse {
+    pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    pub error: Option<String>,
 }
 
 pub struct SocketState(pub Mutex<Option<PathBuf>>);
@@ -133,7 +134,8 @@ async fn handle_client(stream: UnixStream, app: tauri::AppHandle) -> Result<(), 
     Ok(())
 }
 
-fn process_command(cmd: IpcCommand, app: &tauri::AppHandle) -> IpcResponse {
+// Public function for reuse in tcp_ipc module
+pub fn process_command(cmd: IpcCommand, app: &tauri::AppHandle) -> IpcResponse {
     match cmd.command.as_str() {
         "open" => {
             if let Some(path) = cmd.path {

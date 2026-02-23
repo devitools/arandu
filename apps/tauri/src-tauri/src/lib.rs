@@ -12,6 +12,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 mod cli_installer;
 #[cfg(unix)]
 mod ipc;
+mod tcp_ipc;
 mod tray;
 mod whisper;
 
@@ -63,7 +64,22 @@ fn render_markdown(content: String) -> String {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", path, e))
+    eprintln!("[DEBUG] read_file called with path: {:?}", path);
+
+    // Try to canonicalize the path to handle relative paths correctly
+    let resolved_path = match std::fs::canonicalize(&path) {
+        Ok(p) => {
+            eprintln!("[DEBUG] Canonicalized to: {:?}", p);
+            p
+        }
+        Err(e) => {
+            eprintln!("[DEBUG] Canonicalize failed ({}), trying as-is", e);
+            PathBuf::from(&path)
+        }
+    };
+
+    std::fs::read_to_string(&resolved_path)
+        .map_err(|e| format!("Failed to read {}: {}", resolved_path.display(), e))
 }
 
 #[tauri::command]
@@ -349,7 +365,7 @@ pub fn run() {
                 .build()
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            eprintln!("Second instance detected: {:?}", args);
+            eprintln!("[DEBUG] Second instance detected: {:?}", args);
 
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -359,11 +375,15 @@ pub fn run() {
 
             if args.len() > 1 {
                 let file_path = &args[1];
+                eprintln!("[DEBUG] Processing file argument: {:?}", file_path);
                 if !file_path.is_empty() && !file_path.starts_with('-') {
-                    if let Ok(abs_path) = std::fs::canonicalize(file_path) {
-                        let path_str = abs_path.to_string_lossy().to_string();
-                        let _ = app.emit("open-file", &path_str);
-                    }
+                    let abs_path = std::fs::canonicalize(file_path).unwrap_or_else(|e| {
+                        eprintln!("[DEBUG] Canonicalize failed ({}), using as-is", e);
+                        PathBuf::from(file_path)
+                    });
+                    let path_str = abs_path.to_string_lossy().to_string();
+                    eprintln!("[DEBUG] Emitting open-file with: {:?}", path_str);
+                    let _ = app.emit("open-file", &path_str);
                 }
             }
         }))
@@ -377,6 +397,8 @@ pub fn run() {
     #[cfg(unix)]
     let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
 
+    let builder = builder.manage(tcp_ipc::TcpSocketState(Mutex::new(None)));
+
     builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -389,6 +411,11 @@ pub fn run() {
                 if let Err(e) = ipc::setup(app) {
                     eprintln!("Failed to setup IPC socket: {}", e);
                 }
+            }
+
+            // TCP IPC setup (works on all platforms, including from containers)
+            if let Err(e) = tcp_ipc::setup(app) {
+                eprintln!("Failed to setup TCP IPC: {}", e);
             }
 
             let shortcut_str = if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -438,8 +465,13 @@ pub fn run() {
             if let Some(matches) = matches {
                 if let Some(arg) = matches.args.get("file") {
                     if let serde_json::Value::String(path) = &arg.value {
+                        eprintln!("[DEBUG] CLI argument received: {:?}", path);
                         if !path.is_empty() {
-                            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+                            let abs = std::fs::canonicalize(path).unwrap_or_else(|e| {
+                                eprintln!("[DEBUG] Canonicalize failed ({}), using as-is", e);
+                                PathBuf::from(path)
+                            });
+                            eprintln!("[DEBUG] Setting initial file to: {:?}", abs);
                             let initial = app.state::<InitialFile>();
                             if let Ok(mut guard) = initial.0.lock() {
                                 *guard = Some(abs.to_string_lossy().into());
@@ -494,6 +526,11 @@ pub fn run() {
                         let socket_state = app_handle.state::<ipc::SocketState>();
                         ipc::cleanup(socket_state);
                     }
+                    // Cleanup TCP socket
+                    {
+                        let tcp_socket_state = app_handle.state::<tcp_ipc::TcpSocketState>();
+                        tcp_ipc::cleanup(tcp_socket_state);
+                    }
                     return;
                 }
                 api.prevent_exit();
@@ -506,7 +543,14 @@ pub fn run() {
             if let tauri::RunEvent::Opened { urls } = event {
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
-                        let path_str = path.to_string_lossy().to_string();
+                        eprintln!("[DEBUG] Opened event received with path: {:?}", path);
+                        // Canonicalize to ensure absolute path
+                        let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|e| {
+                            eprintln!("[DEBUG] Canonicalize failed ({}), using as-is", e);
+                            path
+                        });
+                        let path_str = abs_path.to_string_lossy().to_string();
+                        eprintln!("[DEBUG] Emitting open-file with: {:?}", path_str);
                         let initial = app_handle.state::<InitialFile>();
                         if let Ok(mut guard) = initial.0.lock() {
                             *guard = Some(path_str.clone());
