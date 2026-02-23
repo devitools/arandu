@@ -887,7 +887,7 @@ document.getElementById("cli-result-ok").addEventListener("click", () => hideMod
 (async () => {
   const initialFile = await invoke("get_initial_file");
   if (initialFile) {
-    loadFile(initialFile);
+    await loadFile(initialFile);
   }
 
   const status = await invoke("check_cli_status");
