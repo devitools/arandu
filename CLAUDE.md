@@ -50,7 +50,7 @@ npx tauri build --target <triple>    # cross-compile (e.g. aarch64-apple-darwin)
 
 ### Version Management
 ```bash
-scripts/set-version.sh 0.3.0  # updates Cargo.toml, tauri.conf.json, package.json
+scripts/set-version.sh 0.3.0  # updates Info.plist, Cargo.toml, tauri.conf.json, package.json
 ```
 
 <details>
