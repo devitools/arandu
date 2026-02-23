@@ -14,10 +14,12 @@
     "dialog:default",
     "fs:default",
     "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
     "updater:default",
     "global-shortcut:default",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
-    "clipboard-manager:allow-read-text"
+    "clipboard-manager:allow-read-text",
+    "window-state:default"
   ]
 }

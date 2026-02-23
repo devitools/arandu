@@ -18,8 +18,6 @@
         "title": "Arandu",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "width": 1100,
-        "height": 760,
         "minWidth": 500,
         "minHeight": 400,
         "skipTaskbar": true,
@@ -80,7 +78,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/Devitools/arandu/releases/latest/download/latest.json"
+        "https://github.com/devitools/arandu/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3NzBBMjNDRDRBQ0U4QjMKUldTejZLelVQS0p3WjliTlZPTFo3SkZNditaUktEblA3b2xMU3VsVEdHNklXRUVUeiswVkw3bE4K"
     }

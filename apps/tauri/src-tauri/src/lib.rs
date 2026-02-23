@@ -1,6 +1,6 @@
 use comrak::{markdown_to_html, Options};
 use notify::{Event, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -31,6 +31,22 @@ struct InstallResult {
     success: bool,
     path: String,
     error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Comment {
+    id: String,
+    block_ids: Vec<String>,
+    text: String,
+    timestamp: i64,
+    resolved: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct CommentsFile {
+    version: String,
+    file_hash: String,
+    comments: Vec<Comment>,
 }
 
 #[tauri::command]
@@ -173,6 +189,39 @@ fn dismiss_cli_prompt(app: tauri::AppHandle) {
     {
         let _ = app;
     }
+}
+
+#[tauri::command]
+fn load_comments(markdown_path: String) -> Result<CommentsFile, String> {
+    let comments_path = format!("{}.comments.json", markdown_path);
+    match std::fs::read_to_string(&comments_path) {
+        Ok(content) => serde_json::from_str(&content)
+            .map_err(|e| format!("Parse error: {}", e)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(CommentsFile {
+            version: "1.0".to_string(),
+            file_hash: String::new(),
+            comments: Vec::new(),
+        }),
+        Err(e) => Err(format!("Failed to load comments: {}", e)),
+    }
+}
+
+#[tauri::command]
+fn save_comments(markdown_path: String, comments_data: CommentsFile) -> Result<(), String> {
+    let comments_path = format!("{}.comments.json", markdown_path);
+    let json = serde_json::to_string_pretty(&comments_data)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+    std::fs::write(&comments_path, json)
+        .map_err(|e| format!("Write error: {}", e))
+}
+
+#[tauri::command]
+fn hash_file(path: String) -> Result<String, String> {
+    use sha2::{Sha256, Digest};
+    let content = std::fs::read(&path)
+        .map_err(|e| format!("Read error: {}", e))?;
+    let hash = Sha256::digest(&content);
+    Ok(format!("{:x}", hash))
 }
 
 #[tauri::command]
@@ -383,6 +432,9 @@ pub fn run() {
             check_cli_status,
             install_cli,
             dismiss_cli_prompt,
+            load_comments,
+            save_comments,
+            hash_file,
             show_recording_window,
             hide_recording_window,
             write_clipboard,
