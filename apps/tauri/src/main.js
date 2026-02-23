@@ -534,6 +534,15 @@ function closeFile() {
   document.getElementById("toolbar-info").style.display = "none";
   document.getElementById("content").innerHTML = "";
   document.getElementById("outline-list").innerHTML = "";
+
+  // Clear comments state
+  selectedBlocks = [];
+  commentsData = { version: "1.0", file_hash: "", comments: [] };
+  const bottomBar = document.getElementById("bottom-bar");
+  if (bottomBar) {
+    bottomBar.style.display = "none";
+  }
+  hideStaleCommentsBanner();
 }
 
 document.getElementById("btn-theme").addEventListener("click", toggleTheme);
