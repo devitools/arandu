@@ -1,4 +1,4 @@
-.PHONY: all generate build build-debug install install-script uninstall clean dist
+.PHONY: all generate build build-debug dev install install-script uninstall clean dist
 
 SCHEME      = Arandu
 CONFIG      = Release
