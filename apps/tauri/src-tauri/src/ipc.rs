@@ -67,6 +67,12 @@ fn socket_path() -> Result<PathBuf, String> {
 
     std::fs::create_dir_all(&arandu_dir)
         .map_err(|e| format!("Failed to create ~/.arandu: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&arandu_dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("Failed to set ~/.arandu permissions: {}", e))?;
+    }
 
     Ok(arandu_dir.join("arandu.sock"))
 }
