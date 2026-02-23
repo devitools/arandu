@@ -12,6 +12,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 mod cli_installer;
 #[cfg(unix)]
 mod ipc;
+mod tcp_ipc;
 mod tray;
 mod whisper;
 
@@ -396,6 +397,8 @@ pub fn run() {
     #[cfg(unix)]
     let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
 
+    let builder = builder.manage(tcp_ipc::TcpSocketState(Mutex::new(None)));
+
     builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -408,6 +411,11 @@ pub fn run() {
                 if let Err(e) = ipc::setup(app) {
                     eprintln!("Failed to setup IPC socket: {}", e);
                 }
+            }
+
+            // TCP IPC setup (works on all platforms, including from containers)
+            if let Err(e) = tcp_ipc::setup(app) {
+                eprintln!("Failed to setup TCP IPC: {}", e);
             }
 
             let shortcut_str = if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -517,6 +525,11 @@ pub fn run() {
                     {
                         let socket_state = app_handle.state::<ipc::SocketState>();
                         ipc::cleanup(socket_state);
+                    }
+                    // Cleanup TCP socket
+                    {
+                        let tcp_socket_state = app_handle.state::<tcp_ipc::TcpSocketState>();
+                        tcp_ipc::cleanup(tcp_socket_state);
                     }
                     return;
                 }
