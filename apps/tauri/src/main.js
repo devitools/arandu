@@ -166,6 +166,7 @@ function setupScrollTracking(headings) {
   const contentArea = document.getElementById("content-area");
   const outlineList = document.getElementById("outline-list");
   const activeHeadings = new Map();
+  let lastActiveIndex = null;
 
   headingObserver = new IntersectionObserver(
     (entries) => {
@@ -184,11 +185,19 @@ function setupScrollTracking(headings) {
         li.classList.remove("active");
       });
 
+      let activeIndex = null;
+
       if (activeHeadings.size > 0) {
         const mostVisible = Array.from(activeHeadings.entries()).reduce((a, b) =>
           a[1] > b[1] ? a : b
         );
-        const activeIndex = mostVisible[0];
+        activeIndex = mostVisible[0];
+        lastActiveIndex = activeIndex;
+      } else if (lastActiveIndex !== null) {
+        activeIndex = lastActiveIndex;
+      }
+
+      if (activeIndex !== null) {
         const activeLi = outlineList.querySelector(`li[data-heading-index="${activeIndex}"]`);
         if (activeLi) {
           activeLi.classList.add("active");
