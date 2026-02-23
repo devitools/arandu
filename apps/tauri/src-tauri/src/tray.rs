@@ -44,11 +44,11 @@ fn glyph_a(nx: f32, ny: f32, size: f32) -> f32 {
         return 0.0;
     }
 
-    let stroke = 0.135;
+    let stroke = 0.115; // Slightly thinner stroke for sharper look
 
     // Left leg: from apex to bottom-left
     let left_top_x = cx;
-    let left_bot_x: f32 = 0.13;
+    let left_bot_x: f32 = 0.15;
     let t = ((ny - top) / height).clamp(0.0, 1.0);
     let left_center = left_top_x + (left_bot_x - left_top_x) * t;
 
@@ -56,33 +56,31 @@ fn glyph_a(nx: f32, ny: f32, size: f32) -> f32 {
     let a_left = smoothstep(aa, -aa, d_left);
 
     // Right leg: from apex to bottom-right
-    let right_bot_x: f32 = 0.87;
+    let right_bot_x: f32 = 0.85;
     let right_center = left_top_x + (right_bot_x - left_top_x) * t;
 
     let d_right = (nx - right_center).abs() - stroke / 2.0;
     let a_right = smoothstep(aa, -aa, d_right);
 
-    // Crossbar
-    let bar_y = 0.62;
-    let bar_h = stroke * 0.75;
-    let bar_t = ((bar_y - top) / height).clamp(0.0, 1.0);
-    let bar_left = left_top_x + (left_bot_x - left_top_x) * bar_t + stroke * 0.3;
-    let bar_right = left_top_x + (right_bot_x - left_top_x) * bar_t - stroke * 0.3;
+    // Diamond/Losango in the middle instead of crossbar
+    let diamond_cy = 0.55; // Center Y of diamond
+    let diamond_size = 0.12; // Size of diamond
 
-    let d_bar_y = (ny - bar_y).abs() - bar_h / 2.0;
-    let in_bar_x = smoothstep(bar_left - aa, bar_left + aa, nx)
-        * smoothstep(bar_right + aa, bar_right - aa, nx);
-    let a_bar = smoothstep(aa, -aa, d_bar_y) * in_bar_x;
+    // Rotated square (diamond) using Manhattan distance
+    let dx = (nx - cx).abs();
+    let dy = (ny - diamond_cy).abs();
+    let diamond_d = dx + dy - diamond_size;
+    let a_diamond = smoothstep(aa, -aa, diamond_d);
 
-    // Apex rounding — cap the top of the A
+    // Sharp apex - very small cap at the top
     let apex_d = ((nx - cx).powi(2) + (ny - top).powi(2)).sqrt();
-    let a_apex = smoothstep(stroke / 2.0 + aa, stroke / 2.0 - aa, apex_d);
+    let a_apex = smoothstep(stroke / 4.0 + aa, stroke / 4.0 - aa, apex_d);
 
-    let mut alpha = a_left.max(a_right).max(a_bar).max(a_apex);
+    let mut alpha = a_left.max(a_right).max(a_diamond).max(a_apex);
 
     // Clip top and bottom with smooth edges
-    alpha *= smoothstep(top - aa, top + aa * 2.0, ny);
-    alpha *= smoothstep(bottom + aa, bottom - aa * 2.0, ny);
+    alpha *= smoothstep(top - aa, top + aa, ny);
+    alpha *= smoothstep(bottom + aa, bottom - aa, ny);
 
     alpha.clamp(0.0, 1.0)
 }

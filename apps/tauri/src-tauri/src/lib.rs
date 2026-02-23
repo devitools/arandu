@@ -206,25 +206,6 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
 
     if currently_recording {
         let _ = handle.emit("stop-recording", ());
-
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        let recorder_state = handle.state::<whisper::commands::RecorderState>();
-        let transcriber_state = handle.state::<whisper::commands::TranscriberState>();
-
-        match whisper::commands::stop_and_transcribe(recorder_state, transcriber_state, handle.clone()) {
-            Ok(text) => {
-                if !text.is_empty() {
-                    use tauri_plugin_clipboard_manager::ClipboardExt;
-                    let _ = handle.clipboard().write_text(text.clone());
-                    let _ = handle.emit("transcription-complete", text);
-                }
-            }
-            Err(e) => {
-                eprintln!("Transcription failed: {}", e);
-                let _ = handle.emit("transcription-error", e);
-            }
-        }
     } else {
         if let Some(window) = handle.get_webview_window("recording") {
             let _ = window.show();

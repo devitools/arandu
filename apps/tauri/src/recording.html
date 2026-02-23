@@ -109,8 +109,7 @@
       height: 100%;
       display: flex;
       align-items: center;
-      padding: 16px;
-      padding-top: 40px;
+      padding: 16px 22px;
       gap: 16px;
       position: relative;
       z-index: 10;
@@ -364,7 +363,7 @@
       showState('recording');
 
       const manualControls = document.getElementById('manual-controls');
-      manualControls.style.display = mode === 'button' ? 'flex' : 'none';
+      manualControls.style.display = 'flex';
 
       timerInterval = setInterval(updateTimer, 100);
     }
@@ -390,12 +389,6 @@
 
       const preview = text.length > 60 ? text.substring(0, 60) + '...' : text;
       document.getElementById('preview-text').textContent = preview;
-
-      if (recordingMode === 'shortcut') {
-        setTimeout(() => {
-          currentWindow.hide();
-        }, 1500);
-      }
     }
 
     function showError(errorMessage) {
@@ -429,12 +422,32 @@
       startRecording('button');
     });
 
-    listen('stop-recording', () => {
+    listen('stop-recording', async () => {
       stopRecording();
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      try {
+        await invoke('stop_and_transcribe');
+      } catch (error) {
+        console.error("Failed to stop and transcribe:", error);
+      }
     });
 
-    listen('transcription-complete', (event) => {
+    listen('transcription-complete', async (event) => {
       showComplete(event.payload);
+
+      if (recordingMode === 'shortcut') {
+        try {
+          await invoke('write_clipboard', { text: event.payload });
+        } catch (error) {
+          console.error("Failed to copy to clipboard:", error);
+        }
+
+        setTimeout(() => {
+          currentWindow.hide();
+        }, 500);
+      }
     });
 
     listen('transcription-error', (event) => {
