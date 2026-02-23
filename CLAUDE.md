@@ -42,6 +42,7 @@ npx tauri build --target <triple>    # cross-compile (e.g. aarch64-apple-darwin)
 **Local development builds:**
 ```bash
 # Build with git hash as version (e.g. Arandu_0.0.0-05ca7c4_aarch64.dmg)
+# Run from repo root:
 ./scripts/build-dev.sh
 
 # This script temporarily updates version files, builds, then restores them
