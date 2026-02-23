@@ -18,12 +18,34 @@ Arandu is a Markdown viewer application built with Tauri (Rust backend + vanilla
 ## Build Commands
 
 ### Tauri (requires Rust + Node.js)
+
+**Using Makefile (recommended):**
 ```bash
 cd apps/tauri
-npm install                    # install frontend dependencies
-npx tauri dev                  # run in development mode (hot reload on localhost:1420)
-npx tauri build                # production build (outputs to src-tauri/target/release)
-npx tauri build --target <triple>  # cross-compile (e.g. aarch64-apple-darwin)
+make dev         # run in development mode (hot reload)
+make build       # production build (uses version from tauri.conf.json)
+make build-dev   # local dev build with git hash (e.g. 0.0.0-abc1234)
+make install     # install app to ~/Applications + CLI to /usr/local/bin
+make clean       # remove build artifacts
+make help        # show all available targets
+```
+
+**Using npm/npx directly:**
+```bash
+cd apps/tauri
+npm install                          # install frontend dependencies
+npx tauri dev                        # run in development mode
+npx tauri build                      # production build
+npx tauri build --target <triple>    # cross-compile (e.g. aarch64-apple-darwin)
+```
+
+**Local development builds:**
+```bash
+# Build with git hash as version (e.g. Arandu_0.0.0-05ca7c4_aarch64.dmg)
+./scripts/build-dev.sh
+
+# This script temporarily updates version files, builds, then restores them
+# Output clearly shows it's a local dev build, not an official release
 ```
 
 ### Version Management
