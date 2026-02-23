@@ -701,7 +701,7 @@ html.dark link[media*="light"] { media: not all; }
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
-  resize: none;
+  resize: vertical;
   margin-bottom: 12px;
   overflow-y: auto;
 }
