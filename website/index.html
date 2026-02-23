@@ -172,6 +172,10 @@ arandu *.md</code></pre>
                   <td>Tables, task lists, strikethrough</td>
                 </tr>
                 <tr>
+                  <td>Plan Reviews <span class="comment-badge">2</span></td>
+                  <td>GitHub-style inline comments</td>
+                </tr>
+                <tr>
                   <td>Syntax Highlighting</td>
                   <td>Powered by highlight.js</td>
                 </tr>
@@ -276,6 +280,43 @@ arandu *.md</code></pre>
 }
 
 <span class="code-function">greet</span>(<span class="code-string">"Arandu"</span>);</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-split fade-in">
+      <div class="feature-text">
+        <h2>Plan Review Comments</h2>
+        <p>GitHub-style inline commenting for markdown files. Select blocks, add feedback,
+        and generate consolidated review prompts for AI coding assistants. Perfect for
+        document review workflows.</p>
+      </div>
+      <div class="feature-visual">
+        <div class="mini-mockup">
+          <div class="mockup-content markdown-body">
+            <h2>Installation</h2>
+            <p>Quick start guide for Arandu <span class="comment-badge">2</span></p>
+            <pre><code>brew install --cask devitools/arandu/arandu</code></pre>
+          </div>
+          <div class="plan-review-bar">
+            <div class="bar-header">
+              <span class="bar-title">PLAN REVIEWS <span class="count-pill">2</span></span>
+              <button class="bar-btn-primary">Generate Review</button>
+            </div>
+            <div class="bar-item">
+              <div class="bar-indicators">
+                <span class="block-indicator">H2</span>
+                <span class="block-indicator">P3</span>
+              </div>
+              <div class="bar-text">Consider adding Linux install instructions</div>
+            </div>
+            <div class="bar-item">
+              <div class="bar-indicators">
+                <span class="block-indicator">C4</span>
+              </div>
+              <div class="bar-text">This command requires Homebrew pre-installed</div>
+            </div>
           </div>
         </div>
       </div>
@@ -432,29 +473,13 @@ arandu *.md</code></pre>
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <rect
-                x="2"
-                y="3"
-                width="20"
-                height="14"
-                rx="2"
-                ry="2"
-              />
-              <line
-                x1="8"
-                y1="21"
-                x2="16"
-                y2="21"
-              />
-              <line
-                x1="12"
-                y1="17"
-                x2="12"
-                y2="21"
-              />
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
-            <h3>Cross-Platform</h3>
-            <p>Powered by Tauri on macOS, Linux, and Windows.</p>
+            <h3>Voice to Text</h3>
+            <p>Built-in speech transcription with OpenAI Whisper. Works offline, no API keys.</p>
           </div>
         </div>
       </div>
