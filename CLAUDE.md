@@ -10,10 +10,12 @@ Arandu is a Markdown viewer application built with Tauri (Rust backend + vanilla
 - File watching with live reload
 - Sidebar outline navigation
 - CLI installer for macOS
+- Unix domain socket IPC for fast CLI-to-app communication
+- System tray with "Show Window" and "Quit" options
 - Offline voice-to-text via Whisper
 - Plan review comment system
 
-**Note:** The macOS native version (`apps/macos/`) is deprecated and no longer maintained. All active development happens in the Tauri version (`apps/tauri/`).
+**IMPORTANT:** The macOS native version (`apps/macos/`) is DEPRECATED and no longer maintained. All active development, bug fixes, and new features happen exclusively in the Tauri version (`apps/tauri/`). Do not make changes to the macOS native version.
 
 ## Build Commands
 
@@ -70,11 +72,53 @@ make clean                     # remove build artifacts and .xcodeproj
 This version is deprecated and no longer receives updates. Use the Tauri version instead.
 </details>
 
+## Project Structure
+
+```
+arandu/
+├── .github/
+│   └── workflows/
+│       ├── auto-tag.yml          # Auto-versioning from conventional commits
+│       ├── release.yml           # GitHub release creation
+│       ├── release-tauri.yml     # Multi-platform builds (macOS/Linux/Windows)
+│       └── deploy-website.yml    # Cloudflare Pages deployment
+├── apps/
+│   ├── macos/                    # ⚠️ DEPRECATED - macOS native app (DO NOT USE)
+│   └── tauri/                    # ✓ Active development - Tauri app
+│       ├── src/                  # Frontend (vanilla JS + HTML)
+│       │   ├── index.html        # Full UI with modals, comment system
+│       │   ├── main.js           # Single entry point
+│       │   └── shared/           # Symlink to ../../shared/
+│       └── src-tauri/            # Rust backend
+│           ├── Cargo.toml
+│           ├── tauri.conf.json
+│           └── src/
+│               ├── lib.rs        # Core logic, Tauri commands, app setup
+│               ├── ipc.rs        # Unix socket IPC server (Unix only)
+│               ├── tray.rs       # System tray integration
+│               ├── cli_installer.rs  # macOS CLI installation
+│               ├── comments.rs   # Plan review comments storage
+│               └── whisper/      # Voice-to-text module
+│                   ├── mod.rs
+│                   └── model.rs
+├── shared/                       # Shared CSS and highlight.js files
+│   ├── style.css
+│   └── highlight/
+├── scripts/
+│   ├── set-version.sh            # Version management across config files
+│   └── build-dev.sh              # Local dev builds with git hash
+├── website/                      # Static landing page (Cloudflare Pages)
+├── examples/                     # Sample markdown files
+└── README.md
+```
+
 ## Architecture
 
 ### Tauri App (`apps/tauri/`)
 - **Rust backend** (`src-tauri/src/`):
   - `lib.rs` defines all Tauri commands (`render_markdown`, `read_file`, `extract_headings`, `watch_file`, etc.) and app setup
+  - `ipc.rs` handles inter-process communication via Unix domain socket (conditionally compiled with `#[cfg(unix)]`)
+  - `tray.rs` manages system tray icon with custom-rendered "A" glyph and menu
   - `cli_installer.rs` handles macOS CLI installation (conditionally compiled with `#[cfg(target_os = "macos")]`)
   - `whisper.rs` handles offline voice-to-text transcription using Whisper models
   - `comments.rs` manages plan review comments storage
@@ -85,6 +129,26 @@ This version is deprecated and no longer receives updates. Use the Tauri version
   - No build step or bundler; plain JS served directly
   - Uses shared CSS from `shared/` directory (symlinked in `src/`)
 - **Tauri plugins**: `cli` (CLI arg parsing), `dialog` (file open), `fs` (file read), `updater` (auto-update from GitHub releases)
+
+### Inter-Process Communication (Unix Only)
+
+The `ipc` module (`apps/tauri/src-tauri/src/ipc.rs`) implements a Unix domain socket server for fast CLI-to-app communication:
+
+- **Socket location:** `~/.arandu/arandu.sock` (permissions: `0600`, directory: `0700`)
+- **Protocol:** JSON-over-socket (one command per line)
+- **Commands:**
+  - `open` - Opens a file path in the app, focuses window
+  - `ping` - Health check
+  - `show` - Brings app window to front
+- **CLI workflow:**
+  1. CLI script (`/usr/local/bin/arandu`) tries socket first (fast path)
+  2. If socket unavailable or fails, falls back to `open` command (starts app if needed)
+  3. Single instance plugin ensures only one app runs, second invocation routes through IPC
+- **Implementation:** Tokio async runtime, graceful cleanup on app quit
+
+**Key files:**
+- `apps/tauri/src-tauri/src/ipc.rs` - Socket server implementation (194 lines)
+- `apps/tauri/src-tauri/src/cli_installer.rs` - CLI script with socket logic (lines 7-42)
 
 ### Shared Assets (`shared/`)
 CSS styles (`style.css`) and highlight.js files. The Tauri frontend symlinks these files in `apps/tauri/src/`.
@@ -107,4 +171,6 @@ The website auto-deploys via `deploy-website.yml` on push to `main` when `websit
 - Bundle identifier: `com.devitools.arandu`
 - macOS minimum deployment target: 13.0
 - Tauri commands are the bridge between JS and Rust — any new backend functionality needs a `#[tauri::command]` function registered in the `invoke_handler`
+- Conditional compilation is used extensively: `#[cfg(target_os = "macos")]` for macOS-specific features like CLI installer, `#[cfg(unix)]` for IPC socket functionality
+- IPC socket communication is Unix-only and gracefully degrades if setup fails (logs error but doesn't block app startup)
 - The `withGlobalTauri: true` setting exposes Tauri APIs on `window.__TAURI__` (no import needed in JS)
