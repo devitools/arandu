@@ -94,10 +94,31 @@ Static landing page deployed to Cloudflare Pages. No build step — plain HTML/C
 
 ## Release Process
 
-Triggered by pushing a `v*` tag:
+### Automatic Tagging
+
+When commits are pushed to `main`, the `auto-tag.yml` workflow automatically creates version tags based on conventional commit types:
+- `feat:` commits trigger a **minor** version bump (e.g., 0.5.0 → 0.6.0)
+- `fix:` commits trigger a **patch** version bump (e.g., 0.5.0 → 0.5.1)
+- Other types (`style:`, `refactor:`, `docs:`, etc.) do not trigger automatic tags
+
+The auto-tag workflow uses commit messages to determine versioning, following semantic versioning principles.
+
+### Manual Release
+
+To create a release manually:
+```bash
+git tag v0.5.3
+git push origin v0.5.3
+```
+
+### Release Build Process
+
+Triggered by pushing a `v*` tag (automatic or manual):
 1. `release.yml` creates a draft GitHub release with auto-generated changelog
 2. `release-tauri.yml` builds Tauri for 4 targets: macOS ARM, macOS Intel, Linux x86_64, Windows x86_64
 3. After all builds succeed, the release is published (draft → public)
+
+### Website Deployment
 
 The website auto-deploys via `deploy-website.yml` on push to `main` when `website/**` changes.
 
