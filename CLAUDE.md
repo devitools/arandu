@@ -74,7 +74,7 @@ This version is deprecated and no longer receives updates. Use the Tauri version
 
 ## Project Structure
 
-```
+```text
 arandu/
 ├── .github/
 │   └── workflows/
@@ -100,7 +100,10 @@ arandu/
 │               ├── comments.rs   # Plan review comments storage
 │               └── whisper/      # Voice-to-text module
 │                   ├── mod.rs
-│                   └── model.rs
+│                   ├── audio.rs
+│                   ├── commands.rs
+│                   ├── model_manager.rs
+│                   └── transcriber.rs
 ├── shared/                       # Shared CSS and highlight.js files
 │   ├── style.css
 │   └── highlight/
@@ -120,7 +123,7 @@ arandu/
   - `ipc.rs` handles inter-process communication via Unix domain socket (conditionally compiled with `#[cfg(unix)]`)
   - `tray.rs` manages system tray icon with custom-rendered "A" glyph and menu
   - `cli_installer.rs` handles macOS CLI installation (conditionally compiled with `#[cfg(target_os = "macos")]`)
-  - `whisper.rs` handles offline voice-to-text transcription using Whisper models
+  - `whisper/` handles offline voice-to-text transcription using Whisper models
   - `comments.rs` manages plan review comments storage
   - Markdown rendering via `comrak` crate, file watching via `notify` crate
 - **JS frontend** (`src/`):
@@ -147,8 +150,8 @@ The `ipc` module (`apps/tauri/src-tauri/src/ipc.rs`) implements a Unix domain so
 - **Implementation:** Tokio async runtime, graceful cleanup on app quit
 
 **Key files:**
-- `apps/tauri/src-tauri/src/ipc.rs` - Socket server implementation (194 lines)
-- `apps/tauri/src-tauri/src/cli_installer.rs` - CLI script with socket logic (lines 7-42)
+- `apps/tauri/src-tauri/src/ipc.rs` - Socket server implementation
+- `apps/tauri/src-tauri/src/cli_installer.rs` - CLI script with socket logic
 
 ### Shared Assets (`shared/`)
 CSS styles (`style.css`) and highlight.js files. The Tauri frontend symlinks these files in `apps/tauri/src/`.
