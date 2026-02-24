@@ -94,9 +94,11 @@ arandu/
 │           ├── tauri.conf.json
 │           └── src/
 │               ├── lib.rs        # Core logic, Tauri commands, app setup
+│               ├── ipc_common.rs # Shared IPC types and command processing
 │               ├── ipc.rs        # Unix socket IPC server (Unix only)
+│               ├── tcp_ipc.rs    # TCP IPC server (all platforms)
 │               ├── tray.rs       # System tray integration
-│               ├── cli_installer.rs  # macOS CLI installation
+│               ├── cli_installer.rs  # macOS CLI installation (macOS only)
 │               ├── comments.rs   # Plan review comments storage
 │               └── whisper/      # Voice-to-text module
 │                   ├── mod.rs
@@ -120,7 +122,9 @@ arandu/
 ### Tauri App (`apps/tauri/`)
 - **Rust backend** (`src-tauri/src/`):
   - `lib.rs` defines all Tauri commands (`render_markdown`, `read_file`, `extract_headings`, `watch_file`, etc.) and app setup
-  - `ipc.rs` handles inter-process communication via Unix domain socket (conditionally compiled with `#[cfg(unix)]`)
+  - `ipc_common.rs` defines shared IPC types (`IpcCommand`, `IpcResponse`) and command processing logic used by both transports
+  - `ipc.rs` Unix domain socket IPC server (conditionally compiled with `#[cfg(unix)]`)
+  - `tcp_ipc.rs` TCP IPC server on `127.0.0.1:7474` (all platforms, used as cross-platform fallback)
   - `tray.rs` manages system tray icon with custom-rendered "A" glyph and menu
   - `cli_installer.rs` handles macOS CLI installation (conditionally compiled with `#[cfg(target_os = "macos")]`)
   - `whisper/` handles offline voice-to-text transcription using Whisper models
@@ -133,25 +137,41 @@ arandu/
   - Uses shared CSS from `shared/` directory (symlinked in `src/`)
 - **Tauri plugins**: `cli` (CLI arg parsing), `dialog` (file open), `fs` (file read), `updater` (auto-update from GitHub releases)
 
-### Inter-Process Communication (Unix Only)
+### Inter-Process Communication
 
-The `ipc` module (`apps/tauri/src-tauri/src/ipc.rs`) implements a Unix domain socket server for fast CLI-to-app communication:
+The IPC layer enables external processes to send commands to the running app. It has two transports sharing common command logic (`ipc_common.rs`):
+
+#### Socket Server (Unix: macOS + Linux)
+
+`ipc.rs` implements a Unix domain socket server, conditionally compiled with `#[cfg(unix)]`:
 
 - **Socket location:** `~/.arandu/arandu.sock` (permissions: `0600`, directory: `0700`)
-- **Protocol:** JSON-over-socket (one command per line)
-- **Commands:**
-  - `open` - Opens a file path in the app, focuses window
-  - `ping` - Health check
-  - `show` - Brings app window to front
-- **CLI workflow:**
-  1. CLI script (`/usr/local/bin/arandu`) tries socket first (fast path)
-  2. If socket unavailable or fails, falls back to `open` command (starts app if needed)
-  3. Single instance plugin ensures only one app runs, second invocation routes through IPC
+- **Protocol:** JSON-over-socket (one JSON object per line)
+- **IPC commands** (defined in `ipc_common.rs`, shared by both transports):
+  - `open` - Opens a file path in the app and focuses the window
+  - `ping` - Health check, returns success
+  - `show` - Brings the app window to front
 - **Implementation:** Tokio async runtime, graceful cleanup on app quit
 
+#### TCP Server (All Platforms)
+
+`tcp_ipc.rs` implements a TCP IPC server on `127.0.0.1:7474`, available on all platforms. Uses the same JSON protocol and commands as the Unix socket transport.
+
+#### CLI Installer (macOS Only)
+
+`cli_installer.rs` is conditionally compiled with `#[cfg(target_os = "macos")]` and installs a bash script to `/usr/local/bin/arandu`. The CLI script workflow:
+
+1. Tries the Unix socket first via `nc -U` (fast path, no app restart)
+2. If the socket is unavailable or fails, falls back to the macOS system `open` command to launch or focus `Arandu.app` (this is the macOS `/usr/bin/open` tool, not the IPC `open` command)
+3. Single instance plugin ensures only one app instance runs; subsequent invocations route through IPC
+
+**Note:** On Linux, the socket server runs but there is no CLI installer -- users must connect to the socket directly or use the TCP server.
+
 **Key files:**
-- `apps/tauri/src-tauri/src/ipc.rs` - Socket server implementation
-- `apps/tauri/src-tauri/src/cli_installer.rs` - CLI script with socket logic
+- `apps/tauri/src-tauri/src/ipc_common.rs` - Shared IPC types and command dispatch
+- `apps/tauri/src-tauri/src/ipc.rs` - Unix domain socket server
+- `apps/tauri/src-tauri/src/tcp_ipc.rs` - TCP server (cross-platform)
+- `apps/tauri/src-tauri/src/cli_installer.rs` - macOS CLI script installation
 
 ### Shared Assets (`shared/`)
 CSS styles (`style.css`) and highlight.js files. The Tauri frontend symlinks these files in `apps/tauri/src/`.
