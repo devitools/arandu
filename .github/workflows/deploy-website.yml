@@ -14,9 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Primary: Cloudflare Pages
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy website --project-name=arandu
+
+      # Fallback: GitHub Pages
+      - name: Deploy to GitHub Pages (fallback)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./website
+          cname: arandu.app  # Remove this line if you want only .github.io domain
