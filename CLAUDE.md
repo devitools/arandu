@@ -177,7 +177,11 @@ The IPC layer enables external processes to send commands to the running app. It
 CSS styles (`style.css`) and highlight.js files. The Tauri frontend symlinks these files in `apps/tauri/src/`.
 
 ### Website (`website/`)
-Static landing page deployed to Cloudflare Pages. No build step — plain HTML/CSS/JS.
+Static landing page with dual deployment for redundancy:
+- **Primary:** Cloudflare Pages (https://arandu.app)
+- **Fallback:** GitHub Pages (https://devitools.github.io/arandu/)
+
+Both deploy automatically via `deploy-website.yml` on push to `main` when `website/**` changes. No build step — plain HTML/CSS/JS.
 
 ## Release Process
 
