@@ -88,11 +88,8 @@ impl Drop for AudioRecorder {
 
 impl AudioRecorder {
     pub fn new(device_name: Option<String>) -> Result<Self, String> {
-        #[cfg(target_os = "macos")]
-        {
-            if !check_microphone_permission()? {
-                return Err("Microphone permission denied. Please grant access in System Settings → Privacy & Security → Microphone".to_string());
-            }
+        if !check_microphone_permission()? {
+            return Err("Microphone permission denied. Please grant access in System Settings → Privacy & Security → Microphone".to_string());
         }
 
         let host = cpal::default_host();

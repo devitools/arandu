@@ -86,6 +86,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/tauri/package-lock.json
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -96,10 +98,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/tauri/src-tauri
+          key: ${{ matrix.target }}
+          cache-on-failure: true
 
       - name: Install frontend dependencies
         working-directory: apps/tauri
-        run: npm install
+        run: npm ci
 
       - name: Copy shared assets (Windows)
         if: matrix.platform == 'windows-latest'
