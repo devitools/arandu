@@ -964,8 +964,8 @@ document.getElementById("history-button").addEventListener("click", (e) => {
   }
 });
 
-// History menu (three dots)
-document.addEventListener("DOMContentLoaded", () => {
+// History menu (three dots) - registered after page load
+setTimeout(() => {
   const menuBtn = document.getElementById("history-menu-btn");
   const clearAllBtn = document.getElementById("clear-all-history");
 
@@ -973,7 +973,7 @@ document.addEventListener("DOMContentLoaded", () => {
     menuBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const menu = document.getElementById("history-menu");
-      if (menu.style.display === "block") {
+      if (menu && menu.style.display === "block") {
         hideHistoryMenu();
       } else {
         showHistoryMenu();
@@ -987,7 +987,7 @@ document.addEventListener("DOMContentLoaded", () => {
       clearHistory();
     });
   }
-});
+}, 0);
 
 document.addEventListener("click", (e) => {
   const historyBtn = document.getElementById("history-button");

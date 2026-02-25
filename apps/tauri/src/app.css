@@ -183,7 +183,7 @@ html.macos #tab-bar {
 
 #history-button {
     width: 36px;
-    height: 36px;
+    height: 100%;
     border: none;
     background: transparent;
     cursor: pointer;
@@ -311,14 +311,20 @@ html.macos #tab-bar {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 4px 8px;
-    font-size: 16px;
+    padding: 6px 10px;
+    font-size: 18px;
     line-height: 1;
-    transition: color 0.15s ease;
+    transition: all 0.15s ease;
+    border-radius: 4px;
+    min-width: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .history-menu-btn:hover {
     color: var(--text);
+    background: var(--code-bg);
 }
 
 .history-menu {
