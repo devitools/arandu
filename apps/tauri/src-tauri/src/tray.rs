@@ -109,7 +109,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (icon_data, w, h) = create_tray_icon();
     let icon = Image::new_owned(icon_data, w, h);
 
-    let mut builder = TrayIconBuilder::new()
+    let builder = TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -136,9 +136,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
 
     #[cfg(target_os = "macos")]
-    {
-        builder = builder.icon_as_template(true);
-    }
+    let builder = builder.icon_as_template(true);
 
     builder.build(app)?;
 
