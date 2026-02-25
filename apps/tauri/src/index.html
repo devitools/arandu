@@ -13,11 +13,6 @@
   <div id="toolbar">
     <div id="toolbar-info" style="display:none">
       <span id="toolbar-title"></span>
-      <button id="btn-close-file" title="Close file">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
-        </svg>
-      </button>
     </div>
     <div id="toolbar-actions">
       <div id="whisper-controls">
@@ -46,6 +41,18 @@
         </svg>
       </button>
     </div>
+  </div>
+
+  <div id="tab-bar">
+    <div class="tab-scroll">
+      <!-- Tabs dynamically rendered here -->
+    </div>
+    <button id="history-button" title="Recent files">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/>
+        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/>
+      </svg>
+    </button>
   </div>
 
   <div id="split">
@@ -123,7 +130,15 @@
   <!-- Comment Modal -->
   <div id="comment-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="comment-modal-title" style="display:none">
     <div class="modal-box modal-large">
-      <h3 id="comment-modal-title">Add Comment</h3>
+      <div class="modal-header-with-mic">
+        <h3 id="comment-modal-title">Add Comment</h3>
+        <button id="comment-mic-btn" class="mic-button" title="Voice-to-text">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 11a3 3 0 0 0 3-3V4a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/>
+            <path d="M13 8a1 1 0 0 0-2 0 3 3 0 0 1-6 0 1 1 0 0 0-2 0 5 5 0 0 0 4 4.9V14H5.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1H9v-1.1A5 5 0 0 0 13 8z"/>
+          </svg>
+        </button>
+      </div>
       <p id="comment-context">Block: "<span id="comment-block-preview"></span>"</p>
       <textarea id="comment-input" aria-label="Comment text" placeholder="Your comment here..." rows="4"></textarea>
       <div class="modal-actions">
@@ -136,7 +151,15 @@
   <!-- Review Prompt Modal -->
   <div id="review-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" style="display:none">
     <div class="modal-box modal-large">
-      <h3 id="review-modal-title">Review Prompt Generated</h3>
+      <div class="modal-header-with-mic">
+        <h3 id="review-modal-title">Review Prompt Generated</h3>
+        <button id="review-mic-btn" class="mic-button" title="Voice-to-text">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 11a3 3 0 0 0 3-3V4a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/>
+            <path d="M13 8a1 1 0 0 0-2 0 3 3 0 0 1-6 0 1 1 0 0 0-2 0 5 5 0 0 0 4 4.9V14H5.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1H9v-1.1A5 5 0 0 0 13 8z"/>
+          </svg>
+        </button>
+      </div>
       <textarea id="review-output" aria-label="Generated review prompt" rows="20"></textarea>
       <div class="modal-actions">
         <button class="btn" id="review-close">Close</button>
@@ -155,6 +178,17 @@
   <div id="save-error-banner" class="notification-banner" role="alert" aria-live="assertive" aria-atomic="true" style="display:none">
     <span>Failed to save comments. Changes may be lost.</span>
     <button id="save-error-dismiss">Dismiss</button>
+  </div>
+
+  <!-- History Dropdown -->
+  <div id="history-dropdown" style="display:none">
+    <div class="history-header">Recent Files</div>
+    <div id="history-list" class="history-list">
+      <!-- Populated dynamically -->
+    </div>
+    <div class="history-footer">
+      <button id="clear-all-history" class="history-clear-link">Clear all history ...</button>
+    </div>
   </div>
 
   <!-- Bottom Bar -->

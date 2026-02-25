@@ -41,6 +41,78 @@ let commentsData = { version: "1.0", file_hash: "", comments: [] };
 let selectedBlocks = [];
 let saveQueue = Promise.resolve();
 
+class TabState {
+  constructor(path) {
+    this.id = crypto.randomUUID();
+    this.path = path;
+
+    // Display folder/filename with smart truncation
+    const parts = path.split('/');
+    if (parts.length > 1) {
+      const fileName = parts[parts.length - 1];
+      const folderName = parts[parts.length - 2];
+
+      // Truncate folder name in the middle if too long
+      const maxFolderLength = 20;
+      let displayFolder = folderName;
+      if (folderName.length > maxFolderLength) {
+        const charsToShow = maxFolderLength - 3;
+        const frontChars = Math.ceil(charsToShow / 2);
+        const backChars = Math.floor(charsToShow / 2);
+        displayFolder = folderName.substring(0, frontChars) + '...' + folderName.substring(folderName.length - backChars);
+      }
+
+      this.displayName = displayFolder + '/' + fileName;
+    } else {
+      this.displayName = parts[0];
+    }
+
+    this.scrollPosition = 0;
+
+    this.content = null;
+    this.html = null;
+    this.headings = null;
+    this.hasError = false; // Track if file failed to load
+
+    this.commentsData = { version: "1.0", file_hash: "", comments: [] };
+    this.selectedBlocks = [];
+
+    this.lastAccessed = Date.now();
+  }
+}
+
+let tabs = [];
+let activeTabId = null;
+let fileHistory = { version: "1.0", max_entries: 20, entries: [] };
+
+function getActiveTab() {
+  return tabs.find(t => t.id === activeTabId);
+}
+
+function getTabByPath(path) {
+  return tabs.find(t => t.path === path);
+}
+
+function formatPath(path) {
+  if (!path) return "";
+
+  // Try to detect home directory pattern
+  // macOS/Linux: /Users/username or /home/username
+  const match = path.match(/^(\/Users\/[^\/]+|\/home\/[^\/]+)(\/.*)?$/);
+  if (match) {
+    return '~' + (match[2] || '');
+  }
+  return path;
+}
+
+function truncateMiddle(str, maxLength = 40) {
+  if (str.length <= maxLength) return str;
+  const charsToShow = maxLength - 3; // Reserve 3 chars for "..."
+  const frontChars = Math.ceil(charsToShow / 2);
+  const backChars = Math.floor(charsToShow / 2);
+  return str.substring(0, frontChars) + '...' + str.substring(str.length - backChars);
+}
+
 function applyTheme(theme) {
   currentTheme = theme;
   localStorage.setItem("arandu-theme", theme);
@@ -71,72 +143,368 @@ function toggleTheme() {
   applyTheme(THEMES[(idx + 1) % THEMES.length]);
 }
 
-async function loadFile(path) {
-  console.log("[DEBUG] loadFile called with:", path);
+function assignCommentableBlockIds() {
+  let headingIdx = 0, paraIdx = 0, listIdx = 0, codeIdx = 0, quoteIdx = 0;
+
+  document.querySelectorAll("#content h1, #content h2, #content h3, #content h4, #content h5, #content h6").forEach((el) => {
+    el.id = "mkw-heading-" + headingIdx++;
+    el.classList.add("commentable-block");
+  });
+
+  document.querySelectorAll("#content p").forEach((el) => {
+    el.id = "mkw-para-" + paraIdx++;
+    el.classList.add("commentable-block");
+  });
+
+  document.querySelectorAll("#content li").forEach((el) => {
+    el.id = "mkw-list-" + listIdx++;
+    el.classList.add("commentable-block");
+    if (el.querySelector('input[type="checkbox"]')) {
+      el.style.listStyle = "none";
+    }
+  });
+
+  document.querySelectorAll("#content pre").forEach((el) => {
+    el.id = "mkw-code-" + codeIdx++;
+    el.classList.add("commentable-block");
+  });
+
+  document.querySelectorAll("#content blockquote").forEach((el) => {
+    el.id = "mkw-quote-" + quoteIdx++;
+    el.classList.add("commentable-block");
+  });
+}
+
+async function loadFileHistory() {
+  try {
+    fileHistory = await invoke("load_history");
+  } catch (e) {
+    console.warn("Failed to load history:", e);
+  }
+}
+
+async function addToHistory(path) {
+  try {
+    await invoke("add_to_history", { filePath: path });
+    await loadFileHistory();
+  } catch (e) {
+    console.error("Failed to update history:", e);
+  }
+}
+
+async function openFileInNewTab(path) {
+  const existing = getTabByPath(path);
+  if (existing) {
+    switchToTab(existing.id);
+    return;
+  }
+
+  const tab = new TabState(path);
+  tabs.push(tab);
+  activeTabId = tab.id;
+
+  await loadFileIntoTab(tab.id, path);
+  await addToHistory(path);
+
+  updateTabBarUI();
+}
+
+async function loadFileIntoTab(tabId, path) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
   try {
     const content = await invoke("read_file", { path });
     const html = await invoke("render_markdown", { content });
     const headings = await invoke("extract_headings", { markdown: content });
 
-    document.getElementById("content").innerHTML = html;
+    tab.content = content;
+    tab.html = html;
+    tab.headings = headings;
 
-    selectedBlocks = [];
-    const addBtn = document.getElementById("bottom-bar-add-comment");
-    if (addBtn) {
-      addBtn.style.display = "none";
-      addBtn.textContent = "+ Add Comment";
+    tab.commentsData = await invoke("load_comments", { markdownPath: path });
+    const currentHash = await invoke("hash_file", { path });
+
+    if (tab.commentsData.file_hash && tab.commentsData.file_hash !== currentHash) {
+      showStaleCommentsBanner();
     }
-    hideStaleCommentsBanner();
-
-    // Assign IDs to all commentable blocks
-    let headingIdx = 0, paraIdx = 0, listIdx = 0, codeIdx = 0, quoteIdx = 0;
-
-    document.querySelectorAll("#content h1, #content h2, #content h3, #content h4, #content h5, #content h6").forEach((el) => {
-      el.id = "mkw-heading-" + headingIdx++;
-      el.classList.add("commentable-block");
-    });
-
-    document.querySelectorAll("#content p").forEach((el) => {
-      el.id = "mkw-para-" + paraIdx++;
-      el.classList.add("commentable-block");
-    });
-
-    document.querySelectorAll("#content li").forEach((el) => {
-      el.id = "mkw-list-" + listIdx++;
-      el.classList.add("commentable-block");
-      if (el.querySelector('input[type="checkbox"]')) {
-        el.style.listStyle = "none";
-      }
-    });
-
-    document.querySelectorAll("#content pre").forEach((el) => {
-      el.id = "mkw-code-" + codeIdx++;
-      el.classList.add("commentable-block");
-    });
-
-    document.querySelectorAll("#content blockquote").forEach((el) => {
-      el.id = "mkw-quote-" + quoteIdx++;
-      el.classList.add("commentable-block");
-    });
-
-    hljs.highlightAll();
-    populateOutline(headings);
-
-    document.body.classList.remove("no-file");
-    document.getElementById("toolbar-title").textContent = path;
-    document.getElementById("toolbar-title").title = path; // Full path on hover
-    document.getElementById("toolbar-info").style.display = "flex";
+    tab.commentsData.file_hash = currentHash;
 
     await invoke("watch_file", { path });
-    currentPath = path;
 
-    // Load comments for this file
-    await loadCommentsForFile(path);
+    if (tabId === activeTabId) {
+      renderTabContent(tab);
+    }
 
-    // Show window when file is loaded
+    tab.lastAccessed = Date.now();
     getCurrentWindow().show();
   } catch (e) {
     console.error("Failed to load file:", e);
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.displayName = `${tab.displayName} (missing)`;
+      tab.hasError = true;
+      if (tabId === activeTabId) {
+        showErrorState(tabId, path);
+      }
+    }
+    updateTabBarUI();
+  }
+}
+
+function showErrorState(tabId, path) {
+  // Clear outline for error state
+  document.getElementById("outline-list").innerHTML = "";
+
+  // Show error state
+  const errorDiv = document.createElement("div");
+  errorDiv.className = "error-state";
+  errorDiv.innerHTML = `
+    <h3>File Not Found</h3>
+    <p class="error-path">${path}</p>
+  `;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn";
+  closeBtn.textContent = "Close Tab";
+  closeBtn.onclick = () => closeTab(tabId);
+  errorDiv.appendChild(closeBtn);
+
+  document.getElementById("content").innerHTML = "";
+  document.getElementById("content").appendChild(errorDiv);
+
+  document.body.classList.remove("no-file");
+  document.body.classList.add("file-error");
+  document.getElementById("toolbar-title").textContent = formatPath(path);
+  document.getElementById("toolbar-title").title = path;
+  document.getElementById("toolbar-info").style.display = "flex";
+}
+
+function renderTabContent(tab) {
+  document.getElementById("content").innerHTML = tab.html;
+
+  selectedBlocks = [];
+  const addBtn = document.getElementById("bottom-bar-add-comment");
+  if (addBtn) {
+    addBtn.style.display = "none";
+    addBtn.textContent = "+ Add Comment";
+  }
+  hideStaleCommentsBanner();
+
+  assignCommentableBlockIds();
+
+  hljs.highlightAll();
+  populateOutline(tab.headings);
+
+  document.body.classList.remove("no-file");
+  document.body.classList.remove("file-error");
+  document.getElementById("toolbar-title").textContent = formatPath(tab.path);
+  document.getElementById("toolbar-title").title = tab.path;
+  document.getElementById("toolbar-info").style.display = "flex";
+
+  currentPath = tab.path;
+  commentsData = JSON.parse(JSON.stringify(tab.commentsData));
+  selectedBlocks = [...tab.selectedBlocks];
+
+  renderCommentBadges();
+  updateBottomBar();
+
+  if (commentsData.comments.length > 0) {
+    showBottomBar();
+  }
+}
+
+function updateTabBarUI() {
+  const tabScroll = document.querySelector(".tab-scroll");
+  if (!tabScroll) return;
+
+  tabScroll.innerHTML = "";
+
+  tabs.forEach(tab => {
+    const tabItem = document.createElement("div");
+    tabItem.className = "tab-item";
+    if (tab.id === activeTabId) {
+      tabItem.classList.add("active");
+    }
+    tabItem.dataset.tabId = tab.id;
+
+    const tabName = document.createElement("span");
+    tabName.className = "tab-name";
+    tabName.textContent = tab.displayName;
+
+    const tabClose = document.createElement("button");
+    tabClose.className = "tab-close";
+    tabClose.textContent = "×";
+    tabClose.setAttribute("aria-label", "Close");
+    tabClose.onclick = (e) => {
+      e.stopPropagation();
+      closeTab(tab.id);
+    };
+
+    tabItem.appendChild(tabName);
+    tabItem.appendChild(tabClose);
+
+    tabItem.onclick = () => {
+      if (tab.id !== activeTabId) {
+        switchToTab(tab.id);
+      }
+    };
+
+    tabScroll.appendChild(tabItem);
+  });
+}
+
+function switchToTab(tabId) {
+  const prevTab = getActiveTab();
+  if (prevTab) {
+    prevTab.scrollPosition = document.getElementById("content-area").scrollTop;
+    prevTab.selectedBlocks = [...selectedBlocks];
+    prevTab.commentsData = JSON.parse(JSON.stringify(commentsData));
+  }
+
+  activeTabId = tabId;
+  const tab = getActiveTab();
+  if (!tab) return;
+
+  commentsData = JSON.parse(JSON.stringify(tab.commentsData));
+  selectedBlocks = [...tab.selectedBlocks];
+  currentPath = tab.path;
+
+  // If tab has error, show error state
+  if (tab.hasError) {
+    showErrorState(tabId, tab.path);
+  } else if (tab.html) {
+    renderTabContent(tab);
+    setTimeout(() => {
+      document.getElementById("content-area").scrollTop = tab.scrollPosition;
+    }, 0);
+  } else {
+    loadFileIntoTab(tabId, tab.path);
+  }
+
+  updateTabBarUI();
+  tab.lastAccessed = Date.now();
+}
+
+async function closeTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  tabs = tabs.filter(t => t.id !== tabId);
+
+  const stillWatched = tabs.some(t => t.path === tab.path);
+  if (!stillWatched) {
+    try {
+      await invoke("unwatch_file", { path: tab.path });
+    } catch (e) {
+      console.warn("Failed to unwatch file:", e);
+    }
+  }
+
+  if (activeTabId === tabId) {
+    if (tabs.length > 0) {
+      const index = tabs.findIndex(t => t.id === tabId);
+      const nextTab = tabs[Math.max(0, index - 1)] || tabs[0];
+      switchToTab(nextTab.id);
+    } else {
+      closeAllTabs();
+    }
+  }
+
+  updateTabBarUI();
+}
+
+function closeAllTabs() {
+  activeTabId = null;
+  currentPath = null;
+  tabs = [];
+  document.body.classList.add("no-file");
+  document.getElementById("toolbar-info").style.display = "none";
+  document.getElementById("content").innerHTML = "";
+  document.getElementById("outline-list").innerHTML = "";
+  hideBottomBar();
+}
+
+async function showHistoryDropdown() {
+  await loadFileHistory();
+
+  const list = document.getElementById("history-list");
+  list.innerHTML = "";
+
+  if (fileHistory.entries.length === 0) {
+    list.innerHTML = '<div class="history-empty">No recent files</div>';
+  } else {
+    fileHistory.entries.forEach(entry => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+
+      const content = document.createElement("div");
+      content.className = "history-item-content";
+
+      const name = document.createElement("span");
+      name.className = "history-name";
+      name.textContent = entry.path.split('/').pop();
+      name.title = entry.path.split('/').pop();
+
+      const path = document.createElement("span");
+      path.className = "history-path";
+      path.textContent = truncateMiddle(formatPath(entry.path), 55);
+      path.title = entry.path;
+
+      content.appendChild(name);
+      content.appendChild(path);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "history-item-remove";
+      removeBtn.textContent = "×";
+      removeBtn.title = "Remove from history";
+      removeBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await removeFromHistory(entry.path);
+      };
+
+      content.onclick = () => {
+        openFileInNewTab(entry.path);
+        hideHistoryDropdown();
+      };
+
+      item.appendChild(content);
+      item.appendChild(removeBtn);
+      list.appendChild(item);
+    });
+  }
+
+  document.getElementById("history-dropdown").style.display = "block";
+}
+
+function hideHistoryDropdown() {
+  document.getElementById("history-dropdown").style.display = "none";
+}
+
+async function removeFromHistory(filePath) {
+  try {
+    await invoke("remove_from_history", { filePath });
+    await loadFileHistory();
+    await showHistoryDropdown();
+  } catch (e) {
+    console.error("Failed to remove from history:", e);
+  }
+}
+
+async function clearHistory() {
+  const result = await confirm("Clear all history?", {
+    title: "Clear History",
+    kind: "warning"
+  });
+
+  if (result) {
+    try {
+      await invoke("clear_history");
+      fileHistory.entries = [];
+      hideHistoryDropdown();
+    } catch (e) {
+      console.error("Failed to clear history:", e);
+    }
   }
 }
 
@@ -233,7 +601,7 @@ async function openFileDialog() {
     multiple: false,
     filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
   });
-  if (path) loadFile(path);
+  if (path) openFileInNewTab(path);
 }
 
 // Comment management functions
@@ -601,38 +969,39 @@ document.addEventListener("click", (e) => {
   }
 });
 
-
-function closeFile() {
-  currentPath = null;
-  document.body.classList.add("no-file");
-  document.getElementById("toolbar-title").textContent = "";
-  document.getElementById("toolbar-info").style.display = "none";
-  document.getElementById("content").innerHTML = "";
-  document.getElementById("outline-list").innerHTML = "";
-
-  if (headingObserver) {
-    headingObserver.disconnect();
-    headingObserver = null;
-  }
-
-  // Clear comments state
-  selectedBlocks = [];
-  commentsData = { version: "1.0", file_hash: "", comments: [] };
-  hideBottomBar();
-  const bottomBar = document.getElementById("bottom-bar");
-  if (bottomBar) {
-    bottomBar.classList.remove("expanded");
-    bottomBar.style.display = "";
-  }
-  hideStaleCommentsBanner();
-}
-
 document.getElementById("btn-theme").addEventListener("click", toggleTheme);
 document.getElementById("btn-refresh").addEventListener("click", () => {
-  if (currentPath) loadFile(currentPath);
+  const tab = getActiveTab();
+  if (tab) loadFileIntoTab(tab.id, tab.path);
 });
 document.getElementById("btn-open").addEventListener("click", openFileDialog);
-document.getElementById("btn-close-file").addEventListener("click", closeFile);
+document.getElementById("history-button").addEventListener("click", (e) => {
+  const dropdown = document.getElementById("history-dropdown");
+  if (dropdown.style.display === "block") {
+    hideHistoryDropdown();
+  } else {
+    showHistoryDropdown();
+  }
+});
+
+// Clear all history button - use event delegation since elements are created dynamically
+document.addEventListener("click", (e) => {
+  if (e.target.id === "clear-all-history" || e.target.closest("#clear-all-history")) {
+    e.stopPropagation();
+    clearHistory();
+    return;
+  }
+});
+
+document.addEventListener("click", (e) => {
+  const historyBtn = document.getElementById("history-button");
+  const dropdown = document.getElementById("history-dropdown");
+
+  // Close dropdown if clicking outside
+  if (!historyBtn.contains(e.target) && !dropdown.contains(e.target)) {
+    hideHistoryDropdown();
+  }
+});
 
 document.getElementById("toolbar").addEventListener("mousedown", (e) => {
   if (e.target.closest("button")) return;
@@ -642,6 +1011,52 @@ document.getElementById("toolbar").addEventListener("mousedown", (e) => {
 document.getElementById("toolbar").addEventListener("dblclick", async (e) => {
   if (e.target.closest("button")) return;
   await getCurrentWindow().toggleMaximize();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.code === "Escape") {
+    const commentModal = document.getElementById("comment-modal");
+    const reviewModal = document.getElementById("review-modal");
+    const whisperModal = document.getElementById("whisper-settings-modal");
+
+    if (commentModal && commentModal.style.display === "flex") {
+      e.preventDefault();
+      commentModal.style.display = "none";
+      return;
+    }
+
+    if (reviewModal && reviewModal.style.display === "flex") {
+      e.preventDefault();
+      reviewModal.style.display = "none";
+      return;
+    }
+
+    if (whisperModal && whisperModal.style.display === "flex") {
+      e.preventDefault();
+      hideModal("whisper-settings-modal");
+      return;
+    }
+  }
+
+  if ((e.metaKey || e.ctrlKey) && e.key === "w") {
+    e.preventDefault();
+    if (activeTabId) closeTab(activeTabId);
+  }
+
+  if ((e.metaKey || e.ctrlKey) && e.key === "Tab") {
+    if (tabs.length === 0) return;
+
+    e.preventDefault();
+    const index = tabs.findIndex(t => t.id === activeTabId);
+
+    if (e.shiftKey) {
+      const prevTab = tabs[(index - 1 + tabs.length) % tabs.length];
+      if (prevTab) switchToTab(prevTab.id);
+    } else {
+      const nextTab = tabs[(index + 1) % tabs.length];
+      if (nextTab) switchToTab(nextTab.id);
+    }
+  }
 });
 
 const sidebarHandle = document.getElementById("sidebar-handle");
@@ -663,8 +1078,18 @@ sidebarHandle.addEventListener("mousedown", (e) => {
   document.addEventListener("mouseup", onUp);
 });
 
-listen("file-changed", () => {
-  if (currentPath) loadFile(currentPath);
+listen("file-changed", async (event) => {
+  const changedPath = event.payload;
+
+  for (const tab of tabs.filter(t => t.path === changedPath)) {
+    if (tab.id === activeTabId) {
+      await loadFileIntoTab(tab.id, tab.path);
+    } else {
+      tab.content = null;
+      tab.html = null;
+      tab.headings = null;
+    }
+  }
 });
 
 // Voice-to-text recording state
@@ -672,6 +1097,7 @@ listen("file-changed", () => {
 const recordingBtn = document.getElementById("recording-btn");
 let isRecording = false;
 let currentShortcutLabel = "⌥Space";
+let activeTranscriptionTarget = null;
 
 listen("start-recording-shortcut", () => {
   isRecording = true;
@@ -685,8 +1111,20 @@ listen("stop-recording", () => {
   isRecording = false;
 });
 
-listen("transcription-complete", () => {
+listen("transcription-complete", (event) => {
   isRecording = false;
+
+
+  if (activeTranscriptionTarget && event.payload) {
+    const textarea = document.getElementById(activeTranscriptionTarget);
+    if (textarea) {
+      const currentText = textarea.value;
+      const separator = currentText && !currentText.endsWith('\n') ? ' ' : '';
+      textarea.value = currentText + separator + event.payload;
+      textarea.focus();
+    }
+    activeTranscriptionTarget = null;
+  }
 });
 
 listen("recording-error", (event) => {
@@ -867,6 +1305,31 @@ async function openWhisperSettings() {
   showModal("whisper-settings-modal");
 }
 
+async function startRecordingForTextarea(textareaId) {
+  const modelLoaded = await invoke("is_model_loaded");
+  if (!modelLoaded) {
+    openWhisperSettings();
+    return;
+  }
+
+  try {
+    activeTranscriptionTarget = textareaId;
+    await invoke("show_recording_window");
+    await invoke("start_recording_button_mode");
+  } catch (e) {
+    console.error("Failed to start recording:", e);
+    activeTranscriptionTarget = null;
+  }
+}
+
+document.getElementById("comment-mic-btn").addEventListener("click", () => {
+  startRecordingForTextarea("comment-input");
+});
+
+document.getElementById("review-mic-btn").addEventListener("click", () => {
+  startRecordingForTextarea("review-output");
+});
+
 // Shortcut configuration
 const shortcutInput = document.getElementById("shortcut-input");
 const shortcutRecordBtn = document.getElementById("shortcut-record-btn");
@@ -928,9 +1391,10 @@ shortcutInput.addEventListener("keydown", async (e) => {
   shortcutRecordBtn.disabled = false;
 });
 
-listen("open-file", (event) => {
+listen("open-file", async (event) => {
   console.log("[DEBUG] open-file event received:", event.payload);
-  loadFile(event.payload);
+  await openFileInNewTab(event.payload);
+  getCurrentWindow().show();
 });
 
 // CLI installer modals
@@ -971,9 +1435,11 @@ document.getElementById("cli-not-now").addEventListener("click", handleCliNotNow
 document.getElementById("cli-result-ok").addEventListener("click", () => hideModal("cli-result-modal"));
 
 (async () => {
+  await loadFileHistory();
+
   const initialFile = await invoke("get_initial_file");
   if (initialFile) {
-    await loadFile(initialFile);
+    await openFileInNewTab(initialFile);
   }
 
   const status = await invoke("check_cli_status");
@@ -998,7 +1464,7 @@ if (!currentPath) {
   document.getElementById("toolbar-title").textContent = "";
   document.getElementById("toolbar-info").style.display = "none";
 } else {
-  document.getElementById("toolbar-title").textContent = currentPath;
+  document.getElementById("toolbar-title").textContent = formatPath(currentPath);
   document.getElementById("toolbar-title").title = currentPath;
   document.getElementById("toolbar-info").style.display = "flex";
 }
