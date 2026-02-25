@@ -964,30 +964,27 @@ document.getElementById("history-button").addEventListener("click", (e) => {
   }
 });
 
-// History menu (three dots) - registered after page load
-setTimeout(() => {
-  const menuBtn = document.getElementById("history-menu-btn");
-  const clearAllBtn = document.getElementById("clear-all-history");
-
-  if (menuBtn) {
-    menuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const menu = document.getElementById("history-menu");
-      if (menu && menu.style.display === "block") {
-        hideHistoryMenu();
-      } else {
-        showHistoryMenu();
-      }
-    });
+// History menu (three dots) - use event delegation since elements are created dynamically
+document.addEventListener("click", (e) => {
+  // Three-dot menu button
+  if (e.target.id === "history-menu-btn" || e.target.closest("#history-menu-btn")) {
+    e.stopPropagation();
+    const menu = document.getElementById("history-menu");
+    if (menu && menu.style.display === "block") {
+      hideHistoryMenu();
+    } else {
+      showHistoryMenu();
+    }
+    return;
   }
 
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      clearHistory();
-    });
+  // Clear all history button
+  if (e.target.id === "clear-all-history" || e.target.closest("#clear-all-history")) {
+    e.stopPropagation();
+    clearHistory();
+    return;
   }
-}, 0);
+});
 
 document.addEventListener("click", (e) => {
   const historyBtn = document.getElementById("history-button");
