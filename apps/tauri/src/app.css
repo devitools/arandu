@@ -360,7 +360,8 @@ html.macos #tab-bar {
 
 #split {
     display: flex;
-    height: calc(100% - 52px - 36px);
+    height: calc(100% - 64px - 38px);
+    overflow: hidden;
 }
 
 #sidebar {
@@ -526,6 +527,14 @@ body.no-file #sidebar {
 }
 
 body.no-file #sidebar-handle {
+    display: none;
+}
+
+body.file-error #sidebar {
+    display: none;
+}
+
+body.file-error #sidebar-handle {
     display: none;
 }
 

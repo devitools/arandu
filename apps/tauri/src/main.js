@@ -274,6 +274,7 @@ function showErrorState(tabId, path) {
   document.getElementById("content").appendChild(errorDiv);
 
   document.body.classList.remove("no-file");
+  document.body.classList.add("file-error");
   document.getElementById("toolbar-title").textContent = formatPath(path);
   document.getElementById("toolbar-title").title = path;
   document.getElementById("toolbar-info").style.display = "flex";
@@ -296,6 +297,7 @@ function renderTabContent(tab) {
   populateOutline(tab.headings);
 
   document.body.classList.remove("no-file");
+  document.body.classList.remove("file-error");
   document.getElementById("toolbar-title").textContent = formatPath(tab.path);
   document.getElementById("toolbar-title").title = tab.path;
   document.getElementById("toolbar-info").style.display = "flex";
