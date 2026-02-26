@@ -1106,6 +1106,9 @@ listen("whisper:settings-changed", async () => {
   const modal = document.getElementById("whisper-settings-modal");
   if (modal && modal.style.display === "flex") {
     try {
+      // Refresh model list (handles active_model button states)
+      await loadModelList();
+      // Update settings fields that loadModelList doesn't cover
       const settings = await invoke("get_whisper_settings");
       const shortcutInput = document.getElementById("shortcut-input");
       const thresholdInput = document.getElementById("threshold-input");
