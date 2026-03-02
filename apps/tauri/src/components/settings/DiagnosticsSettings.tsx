@@ -23,8 +23,8 @@ interface DiagnosticsResult {
 }
 
 function StatusIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
-  if (ok) return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />;
-  if (warn) return <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />;
+  if (ok) return <CheckCircle2 className="h-4 w-4 text-success shrink-0" />;
+  if (warn) return <AlertCircle className="h-4 w-4 text-warning shrink-0" />;
   return <XCircle className="h-4 w-4 text-destructive shrink-0" />;
 }
 

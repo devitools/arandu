@@ -35,6 +35,12 @@ html, body {
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 98%;
 
+    --success: 142 55% 40%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 38 80% 42%;
+    --warning-foreground: 0 0% 98%;
+
     --border: 0 0% 88%;
     --input: 0 0% 88%;
     --ring: 0 0% 20%;
@@ -83,6 +89,12 @@ html, body {
 
     --destructive: 0 60% 45%;
     --destructive-foreground: 0 0% 98%;
+
+    --success: 142 45% 55%;
+    --success-foreground: 0 0% 8%;
+
+    --warning: 38 70% 55%;
+    --warning-foreground: 0 0% 8%;
 
     --border: 0 0% 20%;
     --input: 0 0% 20%;
