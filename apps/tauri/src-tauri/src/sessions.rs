@@ -178,19 +178,27 @@ pub fn count_sessions_batch(conn: &Connection, workspace_paths: &[String]) -> Re
     if workspace_paths.is_empty() {
         return Ok(Vec::new());
     }
-    let placeholders: Vec<String> = (1..=workspace_paths.len()).map(|i| format!("?{}", i)).collect();
-    let sql = format!(
-        "SELECT workspace_path, COUNT(*) FROM sessions WHERE workspace_path IN ({}) GROUP BY workspace_path HAVING COUNT(*) > 0",
-        placeholders.join(", ")
-    );
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare error: {}", e))?;
-    let params: Vec<&dyn rusqlite::ToSql> = workspace_paths.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
-    let rows = stmt
-        .query_map(params.as_slice(), |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
-        .map_err(|e| format!("Query error: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Row error: {}", e))?;
-    Ok(rows)
+
+    const MAX_VARS: usize = 999;
+    let mut results: Vec<(String, i64)> = Vec::new();
+
+    for chunk in workspace_paths.chunks(MAX_VARS) {
+        let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT workspace_path, COUNT(*) FROM sessions WHERE workspace_path IN ({}) GROUP BY workspace_path HAVING COUNT(*) > 0",
+            placeholders.join(", ")
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare error: {}", e))?;
+        let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(params.as_slice(), |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .map_err(|e| format!("Query error: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Row error: {}", e))?;
+        results.extend(rows);
+    }
+
+    Ok(results)
 }
 
 // --- Tauri commands ---

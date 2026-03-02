@@ -70,6 +70,7 @@ export function MarkdownViewer({
   const [reviewCollapsed, setReviewCollapsed] = useState(true);
 
   const review = useComments();
+  const prevPhaseRef = useRef<PlanPhase | undefined>(phase);
 
   const loadContent = useCallback(async (path: string) => {
     try {
@@ -189,12 +190,14 @@ export function MarkdownViewer({
   }, [resolvedPath, embedded]);
 
   useEffect(() => {
-    if (embedded && phase === "reviewing" && reviewRef.current?.isCollapsed()) {
+    const enteringReview = prevPhaseRef.current !== "reviewing" && phase === "reviewing";
+    if (embedded && enteringReview && reviewRef.current?.isCollapsed()) {
       reviewRef.current.expand();
     }
     if (!embedded && review.isPanelOpen && reviewRef.current?.isCollapsed()) {
       reviewRef.current.expand();
     }
+    prevPhaseRef.current = phase;
   }, [phase, review.isPanelOpen, embedded]);
 
   const handleApprove = useCallback(() => {
