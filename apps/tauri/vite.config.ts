@@ -90,7 +90,6 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     host: "localhost",
   },
-  publicDir: "src-vanilla",
   envPrefix: ["VITE_", "TAURI_"],
   build: {
     target: "esnext",
