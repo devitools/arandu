@@ -12,6 +12,7 @@ export function HomeScreen () {
   const { t } = useTranslation();
   const { workspaces, openFile, openDirectory, expandWorkspace, closeWorkspace } = useApp();
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
 
   const byRecent = (a: { lastAccessed: Date }, b: { lastAccessed: Date }) =>
     new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime();
@@ -34,9 +35,28 @@ export function HomeScreen () {
     }
   }, [fileWorkspaces.map((w) => w.path).join(",")]);
 
+  const fetchSessionCounts = useCallback(async () => {
+    if (dirWorkspaces.length === 0) return;
+    const paths = dirWorkspaces.map((w) => w.path);
+    try {
+      const results = await invoke<[string, number][]>("count_workspace_sessions", { workspacePaths: paths });
+      const counts: Record<string, number> = {};
+      for (const [path, count] of results) {
+        counts[path] = count;
+      }
+      setSessionCounts(counts);
+    } catch {
+      // silently ignore
+    }
+  }, [dirWorkspaces.map((w) => w.path).join(",")]);
+
   useEffect(() => {
     fetchCommentCounts();
   }, [fetchCommentCounts]);
+
+  useEffect(() => {
+    fetchSessionCounts();
+  }, [fetchSessionCounts]);
 
   const handleOpenFile = () => openFile();
   const handleOpenDirectory = () => openDirectory();
@@ -142,6 +162,7 @@ export function HomeScreen () {
                     <WorkspaceCard
                       key={workspace.id}
                       workspace={workspace}
+                      sessionCount={sessionCounts[workspace.path]}
                       onExpand={expandWorkspace}
                       onClose={closeWorkspace}
                     />

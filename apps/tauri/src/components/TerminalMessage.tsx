@@ -26,7 +26,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
   if (message.type === "tool") {
     return (
       <div className="terminal-msg">
-        <span className="mt-[5px] flex-shrink-0">
+        <span className="dot-wrapper text-sm flex-shrink-0">
           <span className="dot dot-tool" />
         </span>
         <details className="font-mono text-sm text-muted-foreground">
@@ -49,7 +49,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
   if (message.type === "thinking") {
     return (
       <div className="terminal-msg">
-        <span className="mt-[5px] flex-shrink-0">
+        <span className="dot-wrapper text-sm flex-shrink-0">
           <span className="dot dot-thinking" />
         </span>
         <div className="terminal-markdown font-mono text-sm text-muted-foreground/70 italic break-words min-w-0">
@@ -79,7 +79,7 @@ function AgentMessage({ message, isLast, isStreaming }: TerminalMessageProps) {
 
   return (
     <div className="terminal-msg">
-      <span className="mt-[5px] flex-shrink-0">
+      <span className="dot-wrapper text-sm flex-shrink-0">
         <span className="dot dot-agent" />
       </span>
       <div className="terminal-markdown font-mono text-sm text-foreground break-words min-w-0">

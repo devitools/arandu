@@ -174,10 +174,35 @@ pub fn delete_session(conn: &Connection, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn count_sessions_batch(conn: &Connection, workspace_paths: &[String]) -> Result<Vec<(String, i64)>, String> {
+    let mut results = Vec::with_capacity(workspace_paths.len());
+    let mut stmt = conn
+        .prepare("SELECT COUNT(*) FROM sessions WHERE workspace_path = ?1")
+        .map_err(|e| format!("Prepare error: {}", e))?;
+    for path in workspace_paths {
+        let count: i64 = stmt
+            .query_row(params![path], |row| row.get(0))
+            .unwrap_or(0);
+        if count > 0 {
+            results.push((path.clone(), count));
+        }
+    }
+    Ok(results)
+}
+
 // --- Tauri commands ---
 
 use crate::comments::CommentsDb;
 use tauri::Manager;
+
+#[tauri::command]
+pub fn count_workspace_sessions(
+    workspace_paths: Vec<String>,
+    db: tauri::State<CommentsDb>,
+) -> Result<Vec<(String, i64)>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    count_sessions_batch(&conn, &workspace_paths)
+}
 
 #[tauri::command]
 pub fn session_list(

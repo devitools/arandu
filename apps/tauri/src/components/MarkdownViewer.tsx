@@ -202,8 +202,9 @@ export function MarkdownViewer({
     const reviewText = review.generateReview();
     const hasComments = review.comments.some((c) => !c.resolved);
     review.resolveAll();
+    review.setIsPanelOpen(false);
     onApprovePlan(hasComments ? reviewText : undefined);
-  }, [review.generateReview, review.comments, review.resolveAll, onApprovePlan]);
+  }, [review.generateReview, review.comments, review.resolveAll, review.setIsPanelOpen, onApprovePlan]);
 
   // --- Embedded mode (session plan) ---
   if (embedded) {
