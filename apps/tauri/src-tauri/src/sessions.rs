@@ -175,19 +175,22 @@ pub fn delete_session(conn: &Connection, id: &str) -> Result<(), String> {
 }
 
 pub fn count_sessions_batch(conn: &Connection, workspace_paths: &[String]) -> Result<Vec<(String, i64)>, String> {
-    let mut results = Vec::with_capacity(workspace_paths.len());
-    let mut stmt = conn
-        .prepare("SELECT COUNT(*) FROM sessions WHERE workspace_path = ?1")
-        .map_err(|e| format!("Prepare error: {}", e))?;
-    for path in workspace_paths {
-        let count: i64 = stmt
-            .query_row(params![path], |row| row.get(0))
-            .unwrap_or(0);
-        if count > 0 {
-            results.push((path.clone(), count));
-        }
+    if workspace_paths.is_empty() {
+        return Ok(Vec::new());
     }
-    Ok(results)
+    let placeholders: Vec<String> = (1..=workspace_paths.len()).map(|i| format!("?{}", i)).collect();
+    let sql = format!(
+        "SELECT workspace_path, COUNT(*) FROM sessions WHERE workspace_path IN ({}) GROUP BY workspace_path HAVING COUNT(*) > 0",
+        placeholders.join(", ")
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare error: {}", e))?;
+    let params: Vec<&dyn rusqlite::ToSql> = workspace_paths.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+    let rows = stmt
+        .query_map(params.as_slice(), |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+        .map_err(|e| format!("Query error: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Row error: {}", e))?;
+    Ok(rows)
 }
 
 // --- Tauri commands ---

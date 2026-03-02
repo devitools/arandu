@@ -202,6 +202,7 @@ export function MarkdownViewer({
     const reviewText = review.generateReview();
     const hasComments = review.comments.some((c) => !c.resolved);
     review.resolveAll();
+    reviewRef.current?.collapse();
     review.setIsPanelOpen(false);
     onApprovePlan(hasComments ? reviewText : undefined);
   }, [review.generateReview, review.comments, review.resolveAll, review.setIsPanelOpen, onApprovePlan]);
