@@ -505,7 +505,7 @@ arandu *.md</code></pre>
       <div class="docs-accordion fade-in">
 
         <div class="docs-item">
-          <button class="docs-item-header">
+          <button class="docs-item-header" id="docs-cli-header" aria-expanded="false" aria-controls="docs-cli-body">
             <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             <div class="docs-item-title">
               <strong>Command Line Tool</strong>
@@ -513,7 +513,7 @@ arandu *.md</code></pre>
             </div>
             <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div class="docs-item-body">
+          <div class="docs-item-body" id="docs-cli-body" role="region" aria-labelledby="docs-cli-header">
             <h4>Installation</h4>
             <p>On first launch, Arandu offers to install the <code>arandu</code> CLI automatically. You can also install it later via <strong>Arandu → Install Command Line Tool…</strong> in the menu bar, or install via Homebrew:</p>
             <pre>brew install --cask devitools/arandu/arandu</pre>
@@ -527,7 +527,7 @@ arandu                     # open the file picker</pre>
         </div>
 
         <div class="docs-item">
-          <button class="docs-item-header">
+          <button class="docs-item-header" id="docs-whisper-header" aria-expanded="false" aria-controls="docs-whisper-body">
             <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             <div class="docs-item-title">
               <strong>Voice to Text</strong>
@@ -535,7 +535,7 @@ arandu                     # open the file picker</pre>
             </div>
             <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div class="docs-item-body">
+          <div class="docs-item-body" id="docs-whisper-body" role="region" aria-labelledby="docs-whisper-header">
             <h4>Setup</h4>
             <p>Go to <strong>Settings → Voice to Text</strong> and download a Whisper model. Transcription runs entirely on your device — no internet connection or API key required.</p>
             <ul>
@@ -550,7 +550,7 @@ arandu                     # open the file picker</pre>
         </div>
 
         <div class="docs-item">
-          <button class="docs-item-header">
+          <button class="docs-item-header" id="docs-ai-header" aria-expanded="false" aria-controls="docs-ai-body">
             <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <div class="docs-item-title">
               <strong>AI Workspace</strong>
@@ -558,7 +558,7 @@ arandu                     # open the file picker</pre>
             </div>
             <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div class="docs-item-body">
+          <div class="docs-item-body" id="docs-ai-body" role="region" aria-labelledby="docs-ai-header">
             <h4>Connecting an Agent</h4>
             <p>Open a workspace directory, then click <strong>Connect</strong> to start a session. Arandu communicates with coding agents (such as GitHub Copilot CLI) via the Agent Communication Protocol (ACP) over stdin/stdout.</p>
             <h4>Interaction Modes</h4>

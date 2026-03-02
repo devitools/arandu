@@ -98,15 +98,26 @@
     btn.addEventListener('click', function () {
       var item = btn.closest('.docs-item')
       var isOpen = item.classList.contains('open')
-      document.querySelectorAll('.docs-item').forEach(function (el) { el.classList.remove('open') })
-      if (!isOpen) item.classList.add('open')
+      document.querySelectorAll('.docs-item').forEach(function (el) {
+        el.classList.remove('open')
+        var h = el.querySelector('.docs-item-header')
+        if (h) h.setAttribute('aria-expanded', 'false')
+      })
+      if (!isOpen) {
+        item.classList.add('open')
+        btn.setAttribute('aria-expanded', 'true')
+      }
     })
   })
 
   // Install copy buttons
   document.querySelectorAll('.install-copy-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var cmd = btn.closest('.install-option').querySelector('.install-cmd').textContent
+      var option = btn.closest('.install-option')
+      var cmdEl = option ? option.querySelector('.install-cmd') : null
+      if (!cmdEl) return
+      var cmd = cmdEl.textContent
+      if (!cmd) return
       navigator.clipboard.writeText(cmd).then(function () {
         btn.classList.add('copied')
         setTimeout(function () { btn.classList.remove('copied') }, 1500)
@@ -115,6 +126,7 @@
   })
 
   // Fetch latest release and update download links
+  var releasesUrl = 'https://github.com/devitools/arandu/releases/latest'
   fetch('https://api.github.com/repos/devitools/arandu/releases/latest')
     .then(function (r) { return r.json() })
     .then(function (release) {
@@ -138,8 +150,11 @@
       var ctaBtn = document.getElementById('cta-download')
       if (ctaBtn) {
         var assetKey = os === 'macos' ? 'macos-arm' : (os === 'linux' ? 'linux-appimage' : 'windows-exe')
-        if (map[assetKey]) ctaBtn.href = map[assetKey]
+        ctaBtn.href = map[assetKey] || releasesUrl
       }
     })
-    .catch(function () { /* silently fall back to releases page */ })
+    .catch(function () {
+      var ctaBtn = document.getElementById('cta-download')
+      if (ctaBtn) ctaBtn.href = releasesUrl
+    })
 })()
