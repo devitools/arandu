@@ -1,4 +1,4 @@
-import { MessageSquare, MessagesSquare, X } from 'lucide-react';
+import { MessageSquare, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,7 +34,7 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
   return (
     <Card
       data-workspace-id={workspace.id}
-      className="group relative px-3.5 py-3 cursor-pointer hover:bg-accent/50 transition-colors duration-150"
+      className="group relative px-5 py-4 cursor-pointer hover:bg-accent/50 transition-colors duration-150 min-h-[120px] flex flex-col justify-between"
       onClick={(e) => {
         const cardEl = e.currentTarget;
         const mainEl = cardEl.closest('main');
@@ -92,16 +92,18 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
 
       {sessionCount != null && sessionCount > 0 && (
         <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 text-muted-foreground group-hover:opacity-0 transition-opacity">
-          <MessagesSquare className="h-3 w-3" />
+          <MessageSquare className="h-3 w-3" />
           <span className="font-semibold text-[10px]">{sessionCount}</span>
         </span>
       )}
 
-      <h3 className="font-semibold text-sm truncate pr-6">{workspace.displayName}</h3>
-      <p className="text-xs text-muted-foreground truncate mt-1" dir="rtl" title={workspace.path}>
-        <bdi>{shortenPath(workspace.path)}</bdi>
-      </p>
-      <div className="text-[11px] text-muted-foreground mt-2 text-right">
+      <div>
+        <h3 className="font-semibold text-base line-clamp-2 pr-6 leading-snug">{workspace.displayName}</h3>
+        <p className="text-xs text-muted-foreground truncate mt-1.5" dir="rtl" title={workspace.path}>
+          <bdi>{shortenPath(workspace.path)}</bdi>
+        </p>
+      </div>
+      <div className="text-[11px] text-muted-foreground mt-3 text-right">
         {formatDistanceToNow(new Date(workspace.lastAccessed), { addSuffix: true, locale: getDateLocale(i18n.language) })}
       </div>
     </Card>

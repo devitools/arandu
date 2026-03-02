@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +22,25 @@ export function TerminalInput({
 }: TerminalInputProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
+  const [inputHeight, setInputHeight] = useState(80);
+  const dragRef = useRef<{ y: number; h: number } | null>(null);
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { y: e.clientY, h: inputHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.y - ev.clientY;
+      setInputHeight(Math.min(400, Math.max(80, dragRef.current.h + delta)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
 
   const handleSend = () => {
     if (!input.trim() || isStreaming || disabled) return;
@@ -30,7 +49,7 @@ export function TerminalInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -38,12 +57,19 @@ export function TerminalInput({
 
   return (
     <div className="border-t border-border p-3 space-y-2 shrink-0 bg-card/80">
+      <div
+        className="h-1.5 -mt-1 cursor-row-resize flex items-center justify-center group"
+        onMouseDown={handleDragStart}
+      >
+        <div className="w-8 h-0.5 rounded-full bg-border group-hover:bg-muted-foreground/40 transition-colors" />
+      </div>
       <Textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || t("chat.placeholder")}
-        className="min-h-[80px] max-h-[200px] text-xs resize-y font-mono bg-background/50 border-border/60 placeholder:text-muted-foreground/40 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-offset-0"
+        style={{ height: inputHeight }}
+        className="text-xs resize-none font-mono bg-background/50 border-border/60 placeholder:text-muted-foreground/40 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-offset-0"
         disabled={isStreaming || disabled}
       />
       <div className="flex items-center justify-end gap-2">

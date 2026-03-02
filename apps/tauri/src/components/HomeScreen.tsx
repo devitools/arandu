@@ -140,7 +140,7 @@ export function HomeScreen () {
           {fileWorkspaces.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t("home.documents")}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-8 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                 {fileWorkspaces.map((workspace) => (
                     <WorkspaceCard
                       key={workspace.id}
@@ -158,7 +158,7 @@ export function HomeScreen () {
           {dirWorkspaces.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t("home.workspaces")}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-8 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                 {dirWorkspaces.map((workspace) => (
                     <WorkspaceCard
                       key={workspace.id}

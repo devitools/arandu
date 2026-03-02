@@ -66,6 +66,7 @@ export function MicButton({ size = "default", onTranscriptionComplete }: MicButt
         <Button
           variant="ghost"
           size="icon"
+          type="button"
           className={buttonSize}
           onClick={handleClick}
         >

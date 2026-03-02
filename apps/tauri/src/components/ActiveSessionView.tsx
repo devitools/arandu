@@ -188,10 +188,10 @@ export function ActiveSessionView({
           <span className="text-sm font-semibold truncate mx-2">{session.name}</span>
           <button
             className="text-xs text-muted-foreground/50 hover:text-muted-foreground font-mono flex-shrink-0 transition-colors"
-            title={session.id}
-            onClick={() => navigator.clipboard.writeText(session.id)}
+            title={session.acp_session_id ?? session.id}
+            onClick={() => navigator.clipboard.writeText(session.acp_session_id ?? session.id)}
           >
-            #{session.id.slice(0, 8)}
+            #{(session.acp_session_id ?? session.id).slice(0, 8)}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -324,6 +324,7 @@ export function ActiveSessionView({
               onCancel={acp.cancel}
               onClearErrors={acp.clearErrors}
               onReconnect={handleReconnect}
+              disabled={!isConnected}
               initialPrompt={session.initial_prompt || undefined}
             />
           </div>
@@ -336,7 +337,7 @@ export function ActiveSessionView({
           ref={planPanelRef}
           className="relative"
           defaultSize={60}
-          minSize={30}
+          minSize={20}
           collapsible
           collapsedSize={0}
           onCollapse={() => setPlanCollapsed(true)}

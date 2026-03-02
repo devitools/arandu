@@ -46,7 +46,7 @@ export function TerminalChat({
       <div className="flex-1 relative min-h-0">
         <div ref={scrollRef} className="absolute inset-0 overflow-auto py-4 terminal-scroll-fade">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
+          <div className="flex flex-col items-start justify-start gap-3 pt-2">
             {initialPrompt ? (
               <div className="w-full px-4 py-3 mx-4 rounded border border-border bg-muted/30">
                 <p className="text-xs text-muted-foreground/60 font-mono mb-1">{t("sessions.formPrompt")}</p>
@@ -57,8 +57,8 @@ export function TerminalChat({
                 {t("chat.emptyState")}
               </p>
             )}
-            {onReconnect && (
-              <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={onReconnect}>
+            {onReconnect && disabled && (
+              <Button variant="outline" size="sm" className="mx-4 text-xs gap-1.5" onClick={onReconnect}>
                 <RefreshCw className="h-3.5 w-3.5" />
                 {t("acp.reconnect")}
               </Button>

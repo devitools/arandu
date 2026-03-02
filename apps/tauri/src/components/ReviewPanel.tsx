@@ -198,7 +198,7 @@ export function ReviewPanel({
               placeholder={t("review.commentPlaceholder")}
               className="min-h-[100px] max-h-[200px] text-xs resize-y"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSubmit();
                 }

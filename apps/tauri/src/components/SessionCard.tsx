@@ -44,7 +44,7 @@ export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
 
   return (
     <Card
-      className="group relative px-3.5 py-3 cursor-pointer hover:bg-accent/50 transition-colors duration-150"
+      className="group relative px-5 py-4 cursor-pointer hover:bg-accent/50 transition-colors duration-150 min-h-[120px] flex flex-col justify-between"
       onClick={() => onSelect(session)}
     >
       <AlertDialog>
@@ -78,14 +78,16 @@ export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <h3 className="font-semibold text-sm truncate pr-6">{session.name}</h3>
-      <div className="flex items-center gap-1.5 mt-1">
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PHASE_COLORS[session.phase]}`} />
-        <span className="text-xs text-muted-foreground">
-          {t(PHASE_KEYS[session.phase])}
-        </span>
+      <div>
+        <h3 className="font-semibold text-base line-clamp-2 pr-6 leading-snug">{session.name}</h3>
+        <div className="flex items-center gap-1.5 mt-2">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PHASE_COLORS[session.phase]}`} />
+          <span className="text-xs text-muted-foreground">
+            {t(PHASE_KEYS[session.phase])}
+          </span>
+        </div>
       </div>
-      <div className="text-[11px] text-muted-foreground mt-2 text-right">
+      <div className="text-[11px] text-muted-foreground mt-3 text-right">
         {formatDistanceToNow(new Date(session.updated_at), {
           addSuffix: true,
           locale: getDateLocale(i18n.language),
