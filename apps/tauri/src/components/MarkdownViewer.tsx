@@ -12,7 +12,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup, } from "@/components/ui/resizable";
+import { AlertCircle, Hash, MessageSquare, Minimize2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useComments } from "@/hooks/useComments";
 import { shortenPath } from "@/lib/format-path";
@@ -20,12 +21,9 @@ import type { Heading } from "@/types";
 import type { PlanPhase } from "@/types";
 import hljs from "highlight.js";
 import "highlight.js/styles/github.css";
-import type { ImperativePanelHandle } from "react-resizable-panels";
-import { AlertCircle, Hash, MessageSquare, Minimize2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import "highlight.js/styles/github-dark.css";
 import { Trans, useTranslation } from "react-i18next";
 import { OutlineSidebar } from "./OutlineSidebar";
-import "highlight.js/styles/github-dark.css";
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -64,10 +62,8 @@ export function MarkdownViewer({
   const [loading, setLoading] = useState(!embedded);
   const [error, setError] = useState<string | null>(null);
   const articleRef = useRef<HTMLDivElement>(null);
-  const outlineRef = useRef<ImperativePanelHandle>(null);
-  const reviewRef = useRef<ImperativePanelHandle>(null);
-  const [outlineCollapsed, setOutlineCollapsed] = useState(!!embedded);
-  const [reviewCollapsed, setReviewCollapsed] = useState(true);
+  const [outlineOpen, setOutlineOpen] = useState(!embedded);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const review = useComments();
   const prevPhaseRef = useRef<PlanPhase | undefined>(phase);
@@ -185,17 +181,17 @@ export function MarkdownViewer({
 
   useEffect(() => {
     if (!embedded) {
-      reviewRef.current?.collapse();
+      setReviewOpen(false);
     }
   }, [resolvedPath, embedded]);
 
   useEffect(() => {
     const enteringReview = prevPhaseRef.current !== "reviewing" && phase === "reviewing";
-    if (embedded && enteringReview && reviewRef.current?.isCollapsed()) {
-      reviewRef.current.expand();
+    if (embedded && enteringReview) {
+      setReviewOpen(true);
     }
-    if (!embedded && review.isPanelOpen && reviewRef.current?.isCollapsed()) {
-      reviewRef.current.expand();
+    if (!embedded && review.isPanelOpen) {
+      setReviewOpen(true);
     }
     prevPhaseRef.current = phase;
   }, [phase, review.isPanelOpen, embedded]);
@@ -205,7 +201,7 @@ export function MarkdownViewer({
     const reviewText = review.generateReview();
     const hasComments = review.comments.some((c) => !c.resolved);
     review.resolveAll();
-    reviewRef.current?.collapse();
+    setReviewOpen(false);
     review.setIsPanelOpen(false);
     onApprovePlan(hasComments ? reviewText : undefined);
   }, [review.generateReview, review.comments, review.resolveAll, review.setIsPanelOpen, onApprovePlan]);
@@ -276,13 +272,7 @@ export function MarkdownViewer({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => {
-              if (reviewRef.current?.isCollapsed()) {
-                reviewRef.current.expand();
-              } else {
-                reviewRef.current?.collapse();
-              }
-            }}
+            onClick={() => setReviewOpen((v) => !v)}
             className="h-8 w-8 relative"
             title={t("review.togglePanel")}
           >
@@ -341,105 +331,69 @@ export function MarkdownViewer({
 
   function renderContent() {
     const isEmbedded = !!embedded;
-    const outlineDefault = isEmbedded ? 0 : 15;
-    const contentDefault = isEmbedded ? 100 : 55;
-    const reviewDefault = isEmbedded ? 0 : 30;
-    const autoSaveKey = resolvedPath ? `arandu-layout:${resolvedPath}` : undefined;
 
     return (
-      <div className={isEmbedded ? "h-full" : "flex-1 min-h-0"}>
-        <ResizablePanelGroup
-          key={resolvedPath}
-          direction="horizontal"
-          autoSaveId={autoSaveKey}
-          className="h-full"
+      <div className={`relative overflow-hidden ${isEmbedded ? "h-full" : "flex-1 min-h-0"}`}>
+        {/* Scroll content */}
+        <div
+          className="absolute inset-0 overflow-auto bg-background"
+          onClick={handleBlockClick}
         >
-          <ResizablePanel
-            id="outline"
-            ref={outlineRef}
-            defaultSize={outlineDefault}
-            minSize={10}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => setOutlineCollapsed(true)}
-            onExpand={() => setOutlineCollapsed(false)}
+          <div className="max-w-4xl mx-auto p-8">
+            <article
+              ref={articleRef}
+              className="prose prose-slate dark:prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+        </div>
+
+        {/* Outline toggle button */}
+        {!outlineOpen && headings.length > 0 && (
+          <button
+            onClick={() => setOutlineOpen(true)}
+            className="absolute top-3 left-3 z-20 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
+            title={t("outline.title")}
           >
+            <Hash className="h-4 w-4" />
+          </button>
+        )}
+
+        {/* Review toggle button */}
+        {!reviewOpen && (
+          <button
+            onClick={() => { setReviewOpen(true); review.setIsPanelOpen(true); }}
+            className="absolute top-3 right-3 z-20 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
+            title={t("review.togglePanel")}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            {review.unresolvedCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-semibold bg-foreground text-background flex items-center justify-center">
+                {review.unresolvedCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Outline overlay */}
+        {outlineOpen && headings.length > 0 && (
+          <div className="absolute left-0 top-0 h-full w-[360px] z-20 shadow-lg border-r border-border bg-card">
             <OutlineSidebar
               headings={headings}
-              onClose={() => outlineRef.current?.collapse()}
+              onClose={() => setOutlineOpen(false)}
             />
-          </ResizablePanel>
+          </div>
+        )}
 
-          <ResizableHandle />
-
-          <ResizablePanel
-            id="content"
-            defaultSize={contentDefault}
-            minSize={30}
-          >
-            <div className="relative h-full">
-              {outlineCollapsed && headings.length > 0 && (
-                <button
-                  onClick={() => outlineRef.current?.expand()}
-                  className="absolute top-3 left-3 z-10 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
-                  title={t("outline.title")}
-                >
-                  <Hash className="h-4 w-4" />
-                </button>
-              )}
-              {reviewCollapsed && (
-                <button
-                  onClick={() => reviewRef.current?.expand()}
-                  className="absolute top-3 right-3 z-10 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
-                  title={t("review.togglePanel")}
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {review.unresolvedCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-semibold bg-foreground text-background flex items-center justify-center">
-                      {review.unresolvedCount}
-                    </span>
-                  )}
-                </button>
-              )}
-              <div
-                className="absolute inset-0 overflow-auto bg-background"
-                onClick={handleBlockClick}
-              >
-                <div className="max-w-4xl mx-auto p-8">
-                  <article
-                    ref={articleRef}
-                    className="prose prose-slate dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: html }}
-                  />
-                </div>
-              </div>
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle />
-
-          <ResizablePanel
-            id="review"
-            ref={reviewRef}
-            defaultSize={reviewDefault}
-            minSize={15}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => {
-              setReviewCollapsed(true);
-              review.setIsPanelOpen(false);
-            }}
-            onExpand={() => {
-              setReviewCollapsed(false);
-              review.setIsPanelOpen(true);
-            }}
-          >
+        {/* Review overlay */}
+        {reviewOpen && (
+          <div className="absolute right-0 top-0 h-full w-[440px] z-20 shadow-lg border-l border-border">
             <ReviewPanel
               comments={review.comments}
               selectedBlockIds={review.selectedBlockIds}
               isStale={review.isStale}
               unresolvedCount={review.unresolvedCount}
-              onClose={() => reviewRef.current?.collapse()}
+              onClose={() => { setReviewOpen(false); review.setIsPanelOpen(false); }}
               onAddComment={review.addComment}
               onResolveComment={review.resolveComment}
               onDeleteComment={review.deleteComment}
@@ -449,8 +403,8 @@ export function MarkdownViewer({
               onApprovePlan={onApprovePlan ? handleApprove : undefined}
               onRequestChanges={onRequestChanges}
             />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        )}
       </div>
     );
   }
