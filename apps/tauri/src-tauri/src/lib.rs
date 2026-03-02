@@ -367,7 +367,6 @@ fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 #[tauri::command]
 fn update_menu_labels(
     app: tauri::AppHandle,
@@ -376,8 +375,16 @@ fn update_menu_labels(
     file_menu: String,
     open_file: String,
 ) -> Result<(), String> {
-    rebuild_macos_menu(&app, &settings, &install_cli, &file_menu, &open_file)
-        .map_err(|e| e.to_string())
+    #[cfg(target_os = "macos")]
+    {
+        return rebuild_macos_menu(&app, &settings, &install_cli, &file_menu, &open_file)
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, settings, install_cli, file_menu, open_file);
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -722,7 +729,6 @@ pub fn run() {
             hide_whisper_window,
             show_settings_window,
             update_tray_labels,
-            #[cfg(target_os = "macos")]
             update_menu_labels,
             write_clipboard,
             whisper::commands::is_currently_recording,
