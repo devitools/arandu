@@ -237,6 +237,41 @@ fn dismiss_cli_prompt(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn get_cli_suggested_paths() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        cli_installer::get_suggested_paths()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        vec![]
+    }
+}
+
+#[tauri::command]
+fn install_cli_to_path(path: String) -> InstallResult {
+    #[cfg(target_os = "macos")]
+    {
+        let dest_dir = std::path::Path::new(&path);
+        let r = cli_installer::install_to_dir(dest_dir);
+        InstallResult {
+            success: r.success,
+            path: r.path,
+            error: r.error,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        InstallResult {
+            success: false,
+            path: String::new(),
+            error: "CLI installer is only supported on macOS".to_string(),
+        }
+    }
+}
+
+#[tauri::command]
 fn load_comments(
     markdown_path: String,
     db: tauri::State<comments::CommentsDb>,
@@ -333,6 +368,26 @@ fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn update_menu_labels(
+    app: tauri::AppHandle,
+    settings: String,
+    install_cli: String,
+    file_menu: String,
+    open_file: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        return rebuild_macos_menu(&app, &settings, &install_cli, &file_menu, &open_file)
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, settings, install_cli, file_menu, open_file);
+        Ok(())
+    }
+}
+
+#[tauri::command]
 fn update_tray_labels(
     app: tauri::AppHandle,
     show: String,
@@ -369,15 +424,21 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn rebuild_macos_menu(
+    app: &tauri::AppHandle,
+    settings: &str,
+    install_cli: &str,
+    file_menu: &str,
+    open_file: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
-    let settings_item = MenuItemBuilder::with_id("settings", "Settings\u{2026}")
+    let settings_item = MenuItemBuilder::with_id("settings", settings)
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
-    let install_cli_item = MenuItemBuilder::with_id("install-cli", "Install Command Line Tool\u{2026}")
+    let install_cli_item = MenuItemBuilder::with_id("install-cli", install_cli)
         .build(app)?;
-    let open_file_item = MenuItemBuilder::with_id("open-file", "Open\u{2026}")
+    let open_file_item = MenuItemBuilder::with_id("open-file", open_file)
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
 
@@ -396,7 +457,7 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         .quit()
         .build()?;
 
-    let file_submenu = SubmenuBuilder::new(app, "File")
+    let file_submenu = SubmenuBuilder::new(app, file_menu)
         .item(&open_file_item)
         .build()?;
 
@@ -425,6 +486,18 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         .build()?;
 
     app.set_menu(menu)?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    rebuild_macos_menu(
+        app.handle(),
+        "Configurações\u{2026}",
+        "Instalar Ferramenta de Linha de Comando\u{2026}",
+        "Arquivo",
+        "Abrir\u{2026}",
+    )?;
 
     let app_handle = app.handle().clone();
     app.on_menu_event(move |_app, event| {
@@ -641,6 +714,8 @@ pub fn run() {
             check_cli_status,
             install_cli,
             dismiss_cli_prompt,
+            get_cli_suggested_paths,
+            install_cli_to_path,
             load_comments,
             save_comments,
             count_unresolved_comments,
@@ -654,6 +729,7 @@ pub fn run() {
             hide_whisper_window,
             show_settings_window,
             update_tray_labels,
+            update_menu_labels,
             write_clipboard,
             whisper::commands::is_currently_recording,
             whisper::commands::start_recording,

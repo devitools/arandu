@@ -40,7 +40,7 @@ const PHASE_COLORS: Record<PlanPhase, string> = {
   planning: "bg-yellow-500",
   reviewing: "bg-blue-500",
   executing: "bg-green-500",
-  done: "bg-emerald-500",
+  done: "bg-purple-500",
 };
 
 const PHASE_KEYS: Record<PlanPhase, string> = {
@@ -186,6 +186,13 @@ export function ActiveSessionView({
       <div className="h-10 border-b border-border px-3 flex items-center justify-between shrink-0 bg-card">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-semibold truncate mx-2">{session.name}</span>
+          <button
+            className="text-xs text-muted-foreground/50 hover:text-muted-foreground font-mono flex-shrink-0 transition-colors"
+            title={session.id}
+            onClick={() => navigator.clipboard.writeText(session.id)}
+          >
+            #{session.id.slice(0, 8)}
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-muted transition-colors flex-shrink-0">

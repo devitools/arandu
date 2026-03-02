@@ -143,6 +143,16 @@
     "settings": "Settings\u2026",
     "quit": "Quit"
   },
+  "menu": {
+    "arandu": {
+      "settings": "Settings\u2026",
+      "installCli": "Install Command Line Tool\u2026"
+    },
+    "file": {
+      "title": "File",
+      "open": "Open\u2026"
+    }
+  },
   "plan": {
     "emptyState": "Plan will appear here once the session starts",
     "openPlan": "Open Plan",

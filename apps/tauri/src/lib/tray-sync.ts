@@ -17,3 +17,13 @@ export function updateTrayLabels(lng: string) {
     quit: t.tray.quit,
   }).catch(console.error);
 }
+
+export function updateMenuLabels(lng: string) {
+  const t = translations[lng] ?? translations["pt-BR"];
+  invoke("update_menu_labels", {
+    settings: t.menu.arandu.settings,
+    installCli: t.menu.arandu.installCli,
+    fileMenu: t.menu.file.title,
+    openFile: t.menu.file.open,
+  }).catch(console.error);
+}

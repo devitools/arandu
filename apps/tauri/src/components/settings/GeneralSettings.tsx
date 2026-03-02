@@ -10,7 +10,7 @@ import {
 import { useTheme } from "next-themes";
 import { useTranslation } from "react-i18next";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { updateTrayLabels } from "@/lib/tray-sync";
+import { updateTrayLabels, updateMenuLabels } from "@/lib/tray-sync";
 import { useState } from "react";
 
 const COPILOT_PATH_KEY = "arandu-copilot-path";
@@ -107,6 +107,7 @@ export function GeneralSettings() {
         <Select value={i18n.language} onValueChange={(lng) => {
           i18n.changeLanguage(lng);
           updateTrayLabels(lng);
+          updateMenuLabels(lng);
         }}>
           <SelectTrigger className="w-48">
             <SelectValue />
