@@ -237,6 +237,41 @@ fn dismiss_cli_prompt(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn get_cli_suggested_paths() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        cli_installer::get_suggested_paths()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        vec![]
+    }
+}
+
+#[tauri::command]
+fn install_cli_to_path(path: String) -> InstallResult {
+    #[cfg(target_os = "macos")]
+    {
+        let dest_dir = std::path::Path::new(&path);
+        let r = cli_installer::install_to_dir(dest_dir);
+        InstallResult {
+            success: r.success,
+            path: r.path,
+            error: r.error,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        InstallResult {
+            success: false,
+            path: String::new(),
+            error: "CLI installer is only supported on macOS".to_string(),
+        }
+    }
+}
+
+#[tauri::command]
 fn load_comments(
     markdown_path: String,
     db: tauri::State<comments::CommentsDb>,
@@ -451,10 +486,10 @@ fn rebuild_macos_menu(
 fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     rebuild_macos_menu(
         app.handle(),
-        "Settings\u{2026}",
-        "Install Command Line Tool\u{2026}",
-        "File",
-        "Open\u{2026}",
+        "Configurações\u{2026}",
+        "Instalar Ferramenta de Linha de Comando\u{2026}",
+        "Arquivo",
+        "Abrir\u{2026}",
     )?;
 
     let app_handle = app.handle().clone();
@@ -672,6 +707,8 @@ pub fn run() {
             check_cli_status,
             install_cli,
             dismiss_cli_prompt,
+            get_cli_suggested_paths,
+            install_cli_to_path,
             load_comments,
             save_comments,
             count_unresolved_comments,
