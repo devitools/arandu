@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,16 @@ export function TerminalInput({
   const [input, setInput] = useState("");
   const [inputHeight, setInputHeight] = useState(80);
   const dragRef = useRef<{ y: number; h: number } | null>(null);
+  const dragListenersRef = useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dragListenersRef.current) {
+        document.removeEventListener("mousemove", dragListenersRef.current.onMove);
+        document.removeEventListener("mouseup", dragListenersRef.current.onUp);
+      }
+    };
+  }, []);
 
   const handleDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -35,9 +45,11 @@ export function TerminalInput({
     };
     const onUp = () => {
       dragRef.current = null;
+      dragListenersRef.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
+    dragListenersRef.current = { onMove, onUp };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   };
@@ -49,7 +61,7 @@ export function TerminalInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }

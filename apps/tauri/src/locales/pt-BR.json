@@ -166,7 +166,11 @@
     "notSet": "Não definido",
     "notAvailable": "Não disponível",
     "acpConnection": "Conexão ACP",
-    "failed": "falhou"
+    "failed": "falhou",
+    "acpCommand": "Comando ACP",
+    "acpStderr": "ACP Stderr",
+    "home": "Home",
+    "path": "PATH"
   },
   "tray": {
     "show": "Mostrar Janela",

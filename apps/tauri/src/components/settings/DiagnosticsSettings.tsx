@@ -45,24 +45,28 @@ export function DiagnosticsSettings() {
   const [result, setResult] = useState<DiagnosticsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const copilotPath = localStorage.getItem("arandu-copilot-path") ?? null;
   const ghToken = localStorage.getItem("arandu-gh-token") ?? null;
 
   async function runDiagnostics() {
     setLoading(true);
+    setError(null);
     try {
       const data = await invoke<DiagnosticsResult>("run_diagnostics", {
         binaryPath: copilotPath,
         ghToken: ghToken,
       });
       setResult(data);
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
   }
 
-  function copyReport() {
+  async function copyReport() {
     if (!result) return;
     const lines = [
       `platform: ${result.platform} / ${result.arch}`,
@@ -76,9 +80,13 @@ export function DiagnosticsSettings() {
       result.acp_stderr ? `acp stderr: ${result.acp_stderr}` : null,
       `PATH: ${result.path_env}`,
     ];
-    navigator.clipboard.writeText(lines.filter(Boolean).join("\n"));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(lines.filter(Boolean).join("\n"));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard write failed silently
+    }
   }
 
   const versionOk = !!result?.copilot_version;
@@ -105,8 +113,12 @@ export function DiagnosticsSettings() {
         )}
       </div>
 
-      {!result && !loading && (
+      {!result && !loading && !error && (
         <p className="text-sm text-muted-foreground">{t("diagnostics.hint")}</p>
+      )}
+
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
       )}
 
       {result && (
@@ -144,25 +156,25 @@ export function DiagnosticsSettings() {
           />
           {result.acp_command && (
             <Row
-              label="ACP COMMAND"
+              label={t("diagnostics.acpCommand")}
               ok
               value={result.acp_command}
             />
           )}
           {result.acp_stderr && (
             <Row
-              label="ACP STDERR"
+              label={t("diagnostics.acpStderr")}
               ok={false}
               value={result.acp_stderr}
             />
           )}
           <Row
-            label="HOME"
+            label={t("diagnostics.home")}
             ok={!!result.home_env}
             value={result.home_env || t("diagnostics.notSet")}
           />
           <Row
-            label="PATH"
+            label={t("diagnostics.path")}
             ok={!!result.path_env}
             value={result.path_env || t("diagnostics.notSet")}
           />

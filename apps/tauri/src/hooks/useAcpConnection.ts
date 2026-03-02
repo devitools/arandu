@@ -1,6 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AcpConnectionStatusEvent } from "@/types/acp";
 
 export type AcpConnectionStatus =
@@ -34,9 +32,9 @@ export function useAcpConnection(
   // Listen to Rust-side connection status events
   useEffect(() => {
     let cancelled = false;
-    let unlisten: UnlistenFn | null = null;
+    let unlisten: (() => void) | null = null;
 
-    listen<AcpConnectionStatusEvent>("acp:connection-status", (event) => {
+    window.__TAURI__.event.listen<AcpConnectionStatusEvent>("acp:connection-status", (event: { payload: AcpConnectionStatusEvent }) => {
       if (cancelled) return;
       if (event.payload.workspaceId !== workspaceId) return;
 
@@ -48,7 +46,7 @@ export function useAcpConnection(
       } else if (status === "disconnected") {
         connectedRef.current = false;
       }
-    }).then((fn) => {
+    }).then((fn: () => void) => {
       if (cancelled) fn();
       else unlisten = fn;
     });
@@ -63,7 +61,7 @@ export function useAcpConnection(
   useEffect(() => {
     const onVisible = () => {
       if (!document.hidden && connectedRef.current) {
-        invoke("acp_check_health", { workspaceId }).catch(() => {});
+        window.__TAURI__.core.invoke("acp_check_health", { workspaceId }).catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -81,7 +79,7 @@ export function useAcpConnection(
     try {
       const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
       const ghToken = localStorage.getItem("arandu-gh-token") || undefined;
-      await invoke("acp_connect", {
+      await window.__TAURI__.core.invoke("acp_connect", {
         workspaceId,
         cwd: workspacePath,
         binaryPath,
@@ -97,7 +95,7 @@ export function useAcpConnection(
   const disconnect = useCallback(async () => {
     if (!connectedRef.current) return;
     try {
-      await invoke("acp_disconnect", { workspaceId });
+      await window.__TAURI__.core.invoke("acp_disconnect", { workspaceId });
     } catch {
       // ignore disconnect errors
     } finally {
@@ -109,7 +107,7 @@ export function useAcpConnection(
   useEffect(() => {
     return () => {
       if (connectedRef.current) {
-        invoke("acp_disconnect", { workspaceId }).catch(() => {});
+        window.__TAURI__.core.invoke("acp_disconnect", { workspaceId }).catch(() => {});
         connectedRef.current = false;
       }
     };

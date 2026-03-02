@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,7 +82,7 @@ export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
       <div>
         <h3 className="font-semibold text-base line-clamp-2 pr-6 leading-snug">{session.name}</h3>
         <div className="flex items-center gap-1.5 mt-2">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PHASE_COLORS[session.phase]}`} />
+          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", PHASE_COLORS[session.phase])} />
           <span className="text-xs text-muted-foreground">
             {t(PHASE_KEYS[session.phase])}
           </span>
