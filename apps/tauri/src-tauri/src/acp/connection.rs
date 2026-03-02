@@ -9,14 +9,18 @@ use tauri::{AppHandle, Emitter};
 use super::types::*;
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, JsonRpcError>>>>>;
+type ChildRef = Arc<Mutex<Option<Child>>>;
 
 pub struct AcpConnection {
-    child: Mutex<Option<Child>>,
+    child: ChildRef,
     writer_tx: mpsc::Sender<String>,
     pending: PendingMap,
     next_id: AtomicU64,
     reader_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     writer_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    heartbeat_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    app_handle: AppHandle,
+    workspace_id: String,
 }
 
 impl AcpConnection {
@@ -55,17 +59,27 @@ impl AcpConnection {
             stdout,
             pending.clone(),
             writer_tx.clone(),
-            workspace_id,
-            app_handle,
+            workspace_id.clone(),
+            app_handle.clone(),
+        ));
+
+        let child_arc: ChildRef = Arc::new(Mutex::new(Some(child)));
+        let heartbeat_handle = tokio::spawn(Self::heartbeat_task(
+            child_arc.clone(),
+            workspace_id.clone(),
+            app_handle.clone(),
         ));
 
         Ok(Self {
-            child: Mutex::new(Some(child)),
+            child: child_arc,
             writer_tx,
             pending,
             next_id: AtomicU64::new(1),
             reader_handle: Mutex::new(Some(reader_handle)),
             writer_handle: Mutex::new(Some(writer_handle)),
+            heartbeat_handle: Mutex::new(Some(heartbeat_handle)),
+            app_handle,
+            workspace_id,
         })
     }
 
@@ -155,6 +169,43 @@ impl AcpConnection {
             }
         }
         eprintln!("[acp] Reader task ended for workspace {}", workspace_id);
+        let event = ConnectionStatusEvent {
+            workspace_id: workspace_id.clone(),
+            status: "disconnected".to_string(),
+            attempt: None,
+        };
+        let _ = app_handle.emit("acp:connection-status", &event);
+    }
+
+    async fn heartbeat_task(child: ChildRef, workspace_id: String, app_handle: AppHandle) {
+        let interval = std::time::Duration::from_secs(15);
+        loop {
+            tokio::time::sleep(interval).await;
+            let mut guard = child.lock().await;
+            if let Some(ref mut c) = *guard {
+                match c.try_wait() {
+                    Ok(Some(status)) => {
+                        eprintln!("[acp] Heartbeat: process exited (status: {:?}) for workspace {}", status, workspace_id);
+                        *guard = None;
+                        drop(guard);
+                        let event = ConnectionStatusEvent {
+                            workspace_id,
+                            status: "disconnected".to_string(),
+                            attempt: None,
+                        };
+                        let _ = app_handle.emit("acp:connection-status", &event);
+                        return;
+                    }
+                    Ok(None) => {} // still running
+                    Err(e) => {
+                        eprintln!("[acp] Heartbeat: try_wait error for workspace {}: {}", workspace_id, e);
+                    }
+                }
+            } else {
+                // child was already taken (shutdown called)
+                return;
+            }
+        }
     }
 
     fn handle_session_update(
@@ -241,6 +292,11 @@ impl AcpConnection {
         }
         drop(child_guard);
 
+        let mut heartbeat = self.heartbeat_handle.lock().await;
+        if let Some(handle) = heartbeat.take() {
+            handle.abort();
+        }
+
         let mut reader = self.reader_handle.lock().await;
         if let Some(handle) = reader.take() {
             handle.abort();
@@ -252,5 +308,25 @@ impl AcpConnection {
         }
 
         self.pending.lock().await.clear();
+    }
+
+    /// Returns true if the child process is still running.
+    pub async fn is_alive(&self) -> bool {
+        let mut guard = self.child.lock().await;
+        if let Some(ref mut c) = *guard {
+            matches!(c.try_wait(), Ok(None))
+        } else {
+            false
+        }
+    }
+
+    /// Emits a connection-status event to the frontend.
+    pub fn emit_status(&self, status: &str, attempt: Option<u32>) {
+        let event = ConnectionStatusEvent {
+            workspace_id: self.workspace_id.clone(),
+            status: status.to_string(),
+            attempt,
+        };
+        let _ = self.app_handle.emit("acp:connection-status", &event);
     }
 }

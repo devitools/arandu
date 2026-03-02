@@ -1,15 +1,21 @@
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Emitter};
 
 use super::connection::AcpConnection;
 use super::types::*;
 
-pub struct AcpState(pub Mutex<HashMap<String, AcpConnection>>);
+pub struct AcpState {
+    pub connections: Mutex<HashMap<String, AcpConnection>>,
+    pub configs: Mutex<HashMap<String, ConnectionConfig>>,
+}
 
 impl Default for AcpState {
     fn default() -> Self {
-        Self(Mutex::new(HashMap::new()))
+        Self {
+            connections: Mutex::new(HashMap::new()),
+            configs: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -22,7 +28,7 @@ pub async fn acp_connect(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let mut connections = state.0.lock().await;
+    let mut connections = state.connections.lock().await;
     if connections.contains_key(&workspace_id) {
         return Ok(());
     }
@@ -30,13 +36,26 @@ pub async fn acp_connect(
     let binary = binary_path
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
+
+    let config = ConnectionConfig {
+        binary: binary.clone(),
+        cwd: cwd.clone(),
+        gh_token: gh_token.clone(),
+    };
+
+    let _ = app_handle.emit("acp:connection-status", &ConnectionStatusEvent {
+        workspace_id: workspace_id.clone(),
+        status: "connecting".to_string(),
+        attempt: None,
+    });
+
     let conn = AcpConnection::spawn(
         &binary,
         &["--acp", "--stdio"],
         &cwd,
         gh_token,
         workspace_id.clone(),
-        app_handle,
+        app_handle.clone(),
     )
     .await?;
 
@@ -52,7 +71,9 @@ pub async fn acp_connect(
     .await?;
 
     conn.send_notification("initialized", None).await?;
+    conn.emit_status("connected", None);
 
+    state.configs.lock().await.insert(workspace_id.clone(), config);
     connections.insert(workspace_id, conn);
     Ok(())
 }
@@ -62,7 +83,8 @@ pub async fn acp_disconnect(
     workspace_id: String,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let mut connections = state.0.lock().await;
+    state.configs.lock().await.remove(&workspace_id);
+    let mut connections = state.connections.lock().await;
     if let Some(conn) = connections.remove(&workspace_id) {
         conn.shutdown().await;
     }
@@ -75,7 +97,7 @@ pub async fn acp_new_session(
     cwd: String,
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -103,7 +125,7 @@ pub async fn acp_list_sessions(
     cwd: String,
     state: State<'_, AcpState>,
 ) -> Result<Vec<SessionSummary>, String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -133,7 +155,7 @@ pub async fn acp_load_session(
     cwd: String,
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -167,7 +189,7 @@ pub async fn acp_send_prompt(
     text: String,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -196,7 +218,7 @@ pub async fn acp_set_mode(
     mode: String,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -221,7 +243,7 @@ pub async fn acp_cancel(
     session_id: String,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let connections = state.0.lock().await;
+    let connections = state.connections.lock().await;
     let conn = connections
         .get(&workspace_id)
         .ok_or("Not connected")?;
@@ -237,8 +259,36 @@ pub async fn acp_cancel(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn acp_check_health(
+    workspace_id: String,
+    app_handle: AppHandle,
+    state: State<'_, AcpState>,
+) -> Result<String, String> {
+    let connections = state.connections.lock().await;
+    let status = if let Some(conn) = connections.get(&workspace_id) {
+        if conn.is_alive().await {
+            conn.emit_status("connected", None);
+            "connected"
+        } else {
+            conn.emit_status("disconnected", None);
+            "disconnected"
+        }
+    } else {
+        let event = ConnectionStatusEvent {
+            workspace_id: workspace_id.clone(),
+            status: "disconnected".to_string(),
+            attempt: None,
+        };
+        let _ = app_handle.emit("acp:connection-status", &event);
+        "disconnected"
+    };
+    Ok(status.to_string())
+}
+
 pub async fn disconnect_all(state: &AcpState) {
-    let mut connections = state.0.lock().await;
+    state.configs.lock().await.clear();
+    let mut connections = state.connections.lock().await;
     for (id, conn) in connections.drain() {
         eprintln!("[acp] Disconnecting workspace {}", id);
         conn.shutdown().await;
