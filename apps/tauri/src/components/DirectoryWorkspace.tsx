@@ -61,14 +61,11 @@ export function DirectoryWorkspace() {
   );
 
   const handleResumeSession = useCallback(
-    async (session: SessionRecord) => {
-      if (!connection.isConnected) {
-        await connection.connect();
-      }
+    (session: SessionRecord) => {
       mountedSessionRef.current = session;
       setBrowsing(false);
     },
-    [connection]
+    []
   );
 
   const handlePhaseChange = useCallback(
@@ -101,7 +98,7 @@ export function DirectoryWorkspace() {
   if (!workspace) return null;
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
+    <div className="flex-1 flex flex-col bg-background min-h-0">
       <div className="h-12 border-b border-border px-4 flex items-center justify-between shrink-0" data-tauri-drag-region>
         <div className="flex items-center gap-3 min-w-0" data-tauri-drag-region="false">
           <h2 className="font-semibold text-sm">{workspace.displayName}</h2>
@@ -182,7 +179,9 @@ export function DirectoryWorkspace() {
               workspacePath={workspace.path}
               session={mountedSession}
               isConnected={connection.isConnected}
+              isConnecting={connection.isConnecting}
               onPhaseChange={handlePhaseChange}
+              onConnect={connection.connect}
               onReconnect={handleReconnect}
               onMinimize={handleBackToSessions}
               onEnd={async () => {

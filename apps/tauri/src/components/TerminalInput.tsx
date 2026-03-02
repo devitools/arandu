@@ -37,13 +37,13 @@ export function TerminalInput({
   };
 
   return (
-    <div className="border-t border-border p-3 space-y-2 shrink-0">
+    <div className="border-t border-border p-3 space-y-2 shrink-0 bg-card/80">
       <Textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || t("chat.placeholder")}
-        className="min-h-[100px] max-h-[200px] text-xs resize-y"
+        className="min-h-[80px] max-h-[200px] text-xs resize-y font-mono bg-background/50 border-border/60 placeholder:text-muted-foreground/40 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-offset-0"
         disabled={isStreaming || disabled}
       />
       <div className="flex items-center justify-end gap-2">
@@ -63,7 +63,7 @@ export function TerminalInput({
         ) : (
           <Button
             size="sm"
-            className="text-xs gap-1.5"
+            className="text-xs gap-1.5 font-mono"
             onClick={handleSend}
             disabled={!input.trim() || disabled}
           >

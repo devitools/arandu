@@ -74,6 +74,7 @@ playground.xcworkspace
 # Rust / Tauri
 apps/tauri/src-tauri/target/
 apps/tauri/src-tauri/gen/
+apps/tauri/coverage/
 
 # Node
 node_modules/

@@ -145,7 +145,7 @@ pub fn update_plan(conn: &Connection, id: &str, markdown: &str) -> Result<(), St
 }
 
 pub fn update_phase(conn: &Connection, id: &str, phase: &str) -> Result<(), String> {
-    let valid = ["idle", "planning", "reviewing", "executing"];
+    let valid = ["idle", "planning", "reviewing", "executing", "done"];
     if !valid.contains(&phase) {
         return Err(format!("Invalid phase: {}. Must be one of: {:?}", phase, valid));
     }

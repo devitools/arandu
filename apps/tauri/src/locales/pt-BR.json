@@ -59,6 +59,9 @@
     "endSession": "Encerrar sessão",
     "endSessionTitle": "Encerrar sessão",
     "endSessionDescription": "Deseja encerrar a sessão <strong>{{name}}</strong>? A conexão com o agente será desconectada.",
+    "deleteSessionTitle": "Excluir sessão",
+    "deleteSessionDescription": "Deseja excluir a sessão <strong>{{name}}</strong>? Esta ação não pode ser desfeita.",
+    "deleteSession": "Excluir",
     "toggleChat": "Mostrar/ocultar chat",
     "togglePlan": "Mostrar/ocultar plano"
   },
@@ -73,6 +76,7 @@
     "defaultMessage": "Ocorreu um erro inesperado"
   },
   "acp": {
+    "connect": "Conectar",
     "connecting": "Conectando…",
     "connected": "Conectado",
     "disconnected": "Desconectado",

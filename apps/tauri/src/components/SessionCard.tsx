@@ -1,7 +1,18 @@
 import { X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useTranslation } from "react-i18next";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Trans, useTranslation } from "react-i18next";
 import type { SessionRecord, PlanPhase } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 import { getDateLocale } from "@/lib/date-locale";
@@ -36,17 +47,36 @@ export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
       className="group relative px-3.5 py-3 cursor-pointer hover:bg-accent/50 transition-colors duration-150"
       onClick={() => onSelect(session)}
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute top-1.5 right-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(session.id);
-        }}
-      >
-        <X className="h-3.5 w-3.5" />
-      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-1.5 right-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("sessions.deleteSessionTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <Trans
+                i18nKey="sessions.deleteSessionDescription"
+                values={{ name: session.name }}
+                components={{ strong: <strong /> }}
+              />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onDelete(session.id)}>
+              {t("sessions.deleteSession")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <h3 className="font-semibold text-sm truncate pr-6">{session.name}</h3>
       <div className="flex items-center gap-1.5 mt-1">

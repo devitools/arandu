@@ -16,6 +16,7 @@ interface UsePlanWorkflowParams {
   activeSessionId: string | null;
   acpSessionId: string | null;
   localSessionId: string | null;
+  initialPhase?: PlanPhase;
   sessionPlanFilePath: string | null;
   agentPlanFilePath: string | null;
   isStreaming: boolean;
@@ -29,6 +30,7 @@ export function usePlanWorkflow({
   workspaceId,
   acpSessionId,
   localSessionId,
+  initialPhase,
   sessionPlanFilePath,
   agentPlanFilePath,
   availableModes,
@@ -36,7 +38,7 @@ export function usePlanWorkflow({
   setMode,
   onPhaseChange,
 }: UsePlanWorkflowParams): UsePlanWorkflowReturn {
-  const [phase, setPhaseRaw] = useState<PlanPhase>("idle");
+  const [phase, setPhaseRaw] = useState<PlanPhase>(initialPhase ?? "idle");
   const [planFilePath, setPlanFilePath] = useState<string | null>(
     sessionPlanFilePath
   );

@@ -29,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertCircle, FileText, MessageSquare, Minimize2, RefreshCw, X } from "lucide-react";
+import { AlertCircle, FileText, Loader2, MessageSquare, Minimize2, Plug, RefreshCw, X } from "lucide-react";
 import { Trans } from "react-i18next";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
@@ -56,7 +56,9 @@ interface ActiveSessionViewProps {
   workspacePath: string;
   session: SessionRecord;
   isConnected: boolean;
+  isConnecting?: boolean;
   onPhaseChange?: (sessionId: string, phase: PlanPhase) => void;
+  onConnect?: () => Promise<void>;
   onReconnect?: () => Promise<void>;
   onMinimize?: () => void;
   onEnd?: () => void;
@@ -67,7 +69,9 @@ export function ActiveSessionView({
   workspacePath,
   session,
   isConnected,
+  isConnecting,
   onPhaseChange,
+  onConnect,
   onReconnect,
   onMinimize,
   onEnd,
@@ -86,6 +90,7 @@ export function ActiveSessionView({
     activeSessionId: acp.activeAcpSessionId,
     acpSessionId: session.acp_session_id,
     localSessionId: session.id,
+    initialPhase: session.phase,
     sessionPlanFilePath: session.plan_file_path,
     agentPlanFilePath: acp.agentPlanFilePath,
     isStreaming: acp.isStreaming,
@@ -113,14 +118,12 @@ export function ActiveSessionView({
 
       if (session.phase === "idle") {
         plan.startPlanning(acpId, session.initial_prompt);
-      } else {
-        plan.setPhase(session.phase);
       }
     } catch (e) {
       console.error("[ActiveSessionView] init error:", e);
       setInitError(String(e));
     }
-  }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, acp.startSession, plan.startPlanning, plan.setPhase]);
+  }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, acp.startSession, plan.startPlanning]);
 
   useEffect(() => {
     if (!isConnected || initRef.current) return;
@@ -205,6 +208,23 @@ export function ActiveSessionView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {!isConnected && !isConnecting && onConnect && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={onConnect}
+            >
+              <Plug className="h-3 w-3" />
+              {t("acp.connect")}
+            </Button>
+          )}
+          {isConnecting && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("acp.connecting")}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <Button
@@ -280,6 +300,7 @@ export function ActiveSessionView({
         <ResizablePanel
           id="session-chat"
           ref={chatPanelRef}
+          className="relative"
           defaultSize={40}
           minSize={25}
           collapsible
@@ -287,15 +308,17 @@ export function ActiveSessionView({
           onCollapse={() => setChatCollapsed(true)}
           onExpand={() => setChatCollapsed(false)}
         >
-          <TerminalChat
-            messages={acp.messages}
-            errors={acp.errors}
-            isStreaming={acp.isStreaming}
-            onSend={acp.sendPrompt}
-            onCancel={acp.cancel}
-            onClearErrors={acp.clearErrors}
-            onReconnect={handleReconnect}
-          />
+          <div className="absolute inset-0">
+            <TerminalChat
+              messages={acp.messages}
+              errors={acp.errors}
+              isStreaming={acp.isStreaming}
+              onSend={acp.sendPrompt}
+              onCancel={acp.cancel}
+              onClearErrors={acp.clearErrors}
+              onReconnect={handleReconnect}
+            />
+          </div>
         </ResizablePanel>
 
         <ResizableHandle />
@@ -303,6 +326,7 @@ export function ActiveSessionView({
         <ResizablePanel
           id="session-plan"
           ref={planPanelRef}
+          className="relative"
           defaultSize={60}
           minSize={30}
           collapsible
@@ -310,13 +334,15 @@ export function ActiveSessionView({
           onCollapse={() => setPlanCollapsed(true)}
           onExpand={() => setPlanCollapsed(false)}
         >
-          <MarkdownViewer
-            filePath={plan.planFilePath ?? undefined}
-            embedded
-            phase={plan.phase}
-            onApprovePlan={plan.approvePlan}
-            onRequestChanges={plan.requestChanges}
-          />
+          <div className="absolute inset-0">
+            <MarkdownViewer
+              filePath={plan.planFilePath ?? undefined}
+              embedded
+              phase={plan.phase}
+              onApprovePlan={plan.approvePlan}
+              onRequestChanges={plan.requestChanges}
+            />
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

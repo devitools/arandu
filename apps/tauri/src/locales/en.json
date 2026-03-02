@@ -59,6 +59,9 @@
     "endSession": "End session",
     "endSessionTitle": "End session",
     "endSessionDescription": "End <strong>{{name}}</strong>? The agent connection will be disconnected.",
+    "deleteSessionTitle": "Delete session",
+    "deleteSessionDescription": "Delete <strong>{{name}}</strong>? This action cannot be undone.",
+    "deleteSession": "Delete",
     "toggleChat": "Show/hide chat",
     "togglePlan": "Show/hide plan"
   },
@@ -73,6 +76,7 @@
     "defaultMessage": "An unexpected error occurred"
   },
   "acp": {
+    "connect": "Connect",
     "connecting": "Connecting…",
     "connected": "Connected",
     "disconnected": "Disconnected",

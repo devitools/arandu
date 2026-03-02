@@ -42,7 +42,7 @@ export function TerminalChat({
   return (
     <div className="h-full flex flex-col min-h-0 bg-card">
       <div className="flex-1 relative min-h-0">
-        <div ref={scrollRef} className="absolute inset-0 overflow-auto py-4">
+        <div ref={scrollRef} className="absolute inset-0 overflow-auto py-4 terminal-scroll-fade">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <p className="text-muted-foreground/50 font-mono text-sm">
@@ -56,7 +56,7 @@ export function TerminalChat({
             )}
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-3">
             {messages.map((message, idx) => (
               <TerminalMessage
                 key={message.id}

@@ -14,7 +14,7 @@ const remarkPlugins = [remarkGfm];
 export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessageProps) {
   if (message.role === "user") {
     return (
-      <div className="terminal-msg">
+      <div className="terminal-msg terminal-msg-user">
         <span className="text-[#3dd68c] font-bold mt-[2px] text-sm select-none">›</span>
         <span className="font-mono text-sm text-muted-foreground whitespace-pre-wrap break-words">
           {message.content}
@@ -33,7 +33,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
           <summary className="cursor-pointer hover:text-foreground transition-colors">
             {message.toolTitle || message.content}
             {message.toolStatus === "completed" && (
-              <span className="ml-2 text-[#3dd68c]">✓</span>
+              <span className="ml-2 text-[#3dd68c]/70 text-xs">done</span>
             )}
           </summary>
           {message.toolStatus === "completed" && (
@@ -52,7 +52,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
         <span className="mt-[5px] flex-shrink-0">
           <span className="dot dot-thinking" />
         </span>
-        <div className="terminal-markdown font-mono text-sm text-muted-foreground italic break-words min-w-0">
+        <div className="terminal-markdown font-mono text-sm text-muted-foreground/70 italic break-words min-w-0">
           <Markdown remarkPlugins={remarkPlugins}>{message.content}</Markdown>
         </div>
       </div>
