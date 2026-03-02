@@ -127,6 +127,7 @@
     "title": "Configurações",
     "general": "Geral",
     "whisper": "Voz para Texto",
+    "cli": "CLI",
     "theme": "Tema",
     "language": "Idioma",
     "openSettings": "Configurações",
@@ -135,7 +136,18 @@
     "copilotPathHint": "Deixe em branco para usar o padrão ($COPILOT_PATH ou 'copilot')",
     "ghToken": "GitHub Token",
     "ghTokenPlaceholder": "ghp_... ou gho_...",
-    "ghTokenHint": "Necessário em builds de produção. Obtenha com: gh auth token"
+    "ghTokenHint": "Necessário em builds de produção. Obtenha com: gh auth token",
+    "cliTitle": "Instalador CLI",
+    "cliStatusInstalled": "Instalado",
+    "cliStatusNotInstalled": "Não instalado",
+    "cliSuggestedPaths": "Caminhos sugeridos",
+    "cliCustomPath": "Caminho personalizado",
+    "cliCustomPathPlaceholder": "ex. /usr/local/bin",
+    "cliInstall": "Instalar",
+    "cliInstalling": "Instalando...",
+    "cliSuccess": "Instalado com sucesso em {{path}}",
+    "cliError": "Falha na instalação: {{error}}",
+    "cliHint": "Caminhos de usuário (~/…) instalam sem senha. Caminhos de sistema podem exigir acesso de administrador."
   },
   "tray": {
     "show": "Mostrar Janela",
@@ -146,7 +158,7 @@
   "menu": {
     "arandu": {
       "settings": "Configurações\u2026",
-      "installCli": "Instalar Ferramenta de Linha de Comando\u2026"
+      "installCli": "Instalar CLI\u2026"
     },
     "file": {
       "title": "Arquivo",

@@ -55,8 +55,60 @@ pub fn is_cli_installed() -> bool {
     let paths = [
         PathBuf::from("/usr/local/bin/arandu"),
         home.join(".local/bin/arandu"),
+        home.join("bin/arandu"),
     ];
     paths.iter().any(|p| p.is_file())
+}
+
+pub fn get_suggested_paths() -> Vec<String> {
+    let home = home_dir().unwrap_or_default();
+    vec![
+        home.join(".local/bin").to_string_lossy().into_owned(),
+        home.join("bin").to_string_lossy().into_owned(),
+        "/usr/local/bin".to_string(),
+    ]
+}
+
+pub fn install_to_dir(dest_dir: &std::path::Path) -> InstallResult {
+    let tmp = std::env::temp_dir().join("arandu-cli-install");
+    if let Err(e) = fs::write(&tmp, CLI_SCRIPT) {
+        return InstallResult {
+            success: false,
+            path: String::new(),
+            error: format!("Could not write temporary file: {e}"),
+        };
+    }
+
+    let dest = dest_dir.join("arandu");
+
+    // Attempt 1: direct copy
+    if let Ok(()) = try_direct_install(&tmp, &dest) {
+        let _ = fs::remove_file(&tmp);
+        return InstallResult {
+            success: true,
+            path: dest.to_string_lossy().into(),
+            error: String::new(),
+        };
+    }
+
+    // Attempt 2: privilege escalation via osascript (only for system paths)
+    let dest_str = dest_dir.to_string_lossy();
+    let is_system_path = dest_str.starts_with("/usr/") || dest_str.starts_with("/opt/");
+    if is_system_path && try_privileged_install(&tmp, &dest) {
+        let _ = fs::remove_file(&tmp);
+        return InstallResult {
+            success: true,
+            path: dest.to_string_lossy().into(),
+            error: String::new(),
+        };
+    }
+
+    let _ = fs::remove_file(&tmp);
+    InstallResult {
+        success: false,
+        path: String::new(),
+        error: format!("Could not install to {}: permission denied", dest.display()),
+    }
 }
 
 pub fn has_been_dismissed(app_data_dir: &PathBuf) -> bool {
