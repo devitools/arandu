@@ -1,10 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { AcpConnectionStatusEvent } from "@/types/acp";
+
+export type AcpConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "reconnecting";
 
 interface UseAcpConnectionReturn {
   isConnected: boolean;
   isConnecting: boolean;
   connectionError: string | null;
+  connectionStatus: AcpConnectionStatus;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
 }
@@ -13,14 +23,56 @@ export function useAcpConnection(
   workspaceId: string,
   workspacePath: string
 ): UseAcpConnectionReturn {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] =
+    useState<AcpConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const connectedRef = useRef(false);
 
+  const isConnected = connectionStatus === "connected";
+  const isConnecting = connectionStatus === "connecting";
+
+  // Listen to Rust-side connection status events
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: UnlistenFn | null = null;
+
+    listen<AcpConnectionStatusEvent>("acp:connection-status", (event) => {
+      if (cancelled) return;
+      if (event.payload.workspaceId !== workspaceId) return;
+
+      const { status } = event.payload;
+      setConnectionStatus(status);
+      if (status === "connected") {
+        connectedRef.current = true;
+        setConnectionError(null);
+      } else if (status === "disconnected") {
+        connectedRef.current = false;
+      }
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [workspaceId]);
+
+  // Check health when the window regains visibility (e.g., unminimize)
+  useEffect(() => {
+    const onVisible = () => {
+      if (connectedRef.current) {
+        invoke("acp_check_health", { workspaceId }).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [workspaceId]);
+
   const connect = useCallback(async () => {
-    if (connectedRef.current || isConnecting) return;
-    setIsConnecting(true);
+    if (connectedRef.current || connectionStatus === "connecting") return;
+    setConnectionStatus("connecting");
     setConnectionError(null);
     try {
       const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
@@ -31,14 +83,12 @@ export function useAcpConnection(
         binaryPath,
         ghToken,
       });
-      connectedRef.current = true;
-      setIsConnected(true);
+      // Status will be updated via acp:connection-status event from Rust
     } catch (e) {
       setConnectionError(String(e));
-    } finally {
-      setIsConnecting(false);
+      setConnectionStatus("disconnected");
     }
-  }, [workspaceId, workspacePath, isConnecting]);
+  }, [workspaceId, workspacePath, connectionStatus]);
 
   const disconnect = useCallback(async () => {
     if (!connectedRef.current) return;
@@ -48,7 +98,7 @@ export function useAcpConnection(
       // ignore disconnect errors
     } finally {
       connectedRef.current = false;
-      setIsConnected(false);
+      setConnectionStatus("idle");
     }
   }, [workspaceId]);
 
@@ -65,6 +115,7 @@ export function useAcpConnection(
     isConnected,
     isConnecting,
     connectionError,
+    connectionStatus,
     connect,
     disconnect,
   };
