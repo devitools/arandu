@@ -4,10 +4,10 @@
   "version": "0.2.0",
   "identifier": "com.devitools.arandu",
   "build": {
-    "beforeDevCommand": "npm run dev:server",
-    "beforeBuildCommand": null,
-    "devUrl": "http://localhost:1420",
-    "frontendDist": "../src"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
   "app": {
     "macOSPrivateApi": true,
@@ -20,13 +20,13 @@
         "hiddenTitle": true,
         "minWidth": 500,
         "minHeight": 400,
-        "skipTaskbar": true,
+        "skipTaskbar": false,
         "visible": false
       },
       {
-        "label": "recording",
-        "title": "Recording",
-        "url": "recording.html",
+        "label": "whisper",
+        "title": "Whisper",
+        "url": "whisper.html",
         "width": 600,
         "height": 160,
         "resizable": false,
@@ -36,6 +36,18 @@
         "visible": false,
         "transparent": true,
         "shadow": false
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "settings.html",
+        "width": 600,
+        "height": 520,
+        "resizable": true,
+        "minWidth": 450,
+        "minHeight": 400,
+        "visible": false,
+        "center": true
       }
     ]
   },

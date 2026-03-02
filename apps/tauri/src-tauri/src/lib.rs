@@ -1,6 +1,6 @@
 use comrak::{markdown_to_html, Options};
 use notify::{Event, RecursiveMode, Watcher};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,9 +9,13 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+mod acp;
 #[cfg(target_os = "macos")]
 mod cli_installer;
+mod comments;
 mod history;
+mod plan_file;
+mod sessions;
 mod ipc_common;
 #[cfg(unix)]
 mod ipc;
@@ -37,22 +41,6 @@ struct InstallResult {
     success: bool,
     path: String,
     error: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Comment {
-    id: String,
-    block_ids: Vec<String>,
-    text: String,
-    timestamp: i64,
-    resolved: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct CommentsFile {
-    version: String,
-    file_hash: String,
-    comments: Vec<Comment>,
 }
 
 #[tauri::command]
@@ -125,6 +113,7 @@ struct InitialFile(Mutex<Option<String>>);
 
 pub struct ExplicitQuit(pub Arc<AtomicBool>);
 pub struct IsRecording(pub Arc<AtomicBool>);
+pub struct RecordingMode(pub Mutex<Option<String>>);
 
 fn create_file_watcher(app: tauri::AppHandle) -> Result<notify::RecommendedWatcher, String> {
     notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
@@ -248,27 +237,37 @@ fn dismiss_cli_prompt(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn load_comments(markdown_path: String) -> Result<CommentsFile, String> {
-    let comments_path = format!("{}.comments.json", markdown_path);
-    match std::fs::read_to_string(&comments_path) {
-        Ok(content) => serde_json::from_str(&content)
-            .map_err(|e| format!("Parse error: {}", e)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(CommentsFile {
-            version: "1.0".to_string(),
-            file_hash: String::new(),
-            comments: Vec::new(),
-        }),
-        Err(e) => Err(format!("Failed to load comments: {}", e)),
+fn load_comments(
+    markdown_path: String,
+    db: tauri::State<comments::CommentsDb>,
+) -> Result<comments::CommentsData, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let data = comments::load_comments(&conn, &markdown_path)?;
+    if data.comments.is_empty() && data.file_hash.is_empty() {
+        if comments::migrate_json_file(&conn, &markdown_path)? {
+            return comments::load_comments(&conn, &markdown_path);
+        }
     }
+    Ok(data)
 }
 
 #[tauri::command]
-fn save_comments(markdown_path: String, comments_data: CommentsFile) -> Result<(), String> {
-    let comments_path = format!("{}.comments.json", markdown_path);
-    let json = serde_json::to_string_pretty(&comments_data)
-        .map_err(|e| format!("Serialize error: {}", e))?;
-    std::fs::write(&comments_path, json)
-        .map_err(|e| format!("Write error: {}", e))
+fn save_comments(
+    markdown_path: String,
+    comments_data: comments::CommentsData,
+    db: tauri::State<comments::CommentsDb>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    comments::save_comments(&conn, &markdown_path, &comments_data)
+}
+
+#[tauri::command]
+fn count_unresolved_comments(
+    file_paths: Vec<String>,
+    db: tauri::State<comments::CommentsDb>,
+) -> Result<Vec<(String, i64)>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    comments::count_unresolved_batch(&conn, &file_paths)
 }
 
 #[tauri::command]
@@ -281,8 +280,8 @@ fn hash_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn show_recording_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("recording") {
+fn show_whisper_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("whisper") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -290,8 +289,8 @@ fn show_recording_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn hide_recording_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("recording") {
+fn hide_whisper_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("whisper") {
         window.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -305,6 +304,45 @@ fn write_clipboard(text: String, app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Failed to write to clipboard: {}", e))
 }
 
+pub fn handle_recording_cancel(handle: &tauri::AppHandle) {
+    let is_recording = handle.state::<IsRecording>();
+    if !is_recording.0.load(Ordering::Relaxed) {
+        return;
+    }
+
+    is_recording.0.store(false, Ordering::Relaxed);
+    let recorder_state = handle.state::<whisper::commands::RecorderState>();
+    if let Ok(mut guard) = recorder_state.0.lock() {
+        *guard = None;
+    }
+
+    let _ = handle.emit("recording-cancelled", ());
+
+    if let Some(window) = handle.get_webview_window("whisper") {
+        let _ = window.hide();
+    }
+}
+
+#[tauri::command]
+fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn update_tray_labels(
+    app: tauri::AppHandle,
+    show: String,
+    record: String,
+    settings: String,
+    quit: String,
+) -> Result<(), String> {
+    tray::update_labels(&app, show, record, settings, quit)
+}
+
 pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
     let is_recording = handle.state::<IsRecording>();
     let currently_recording = is_recording.0.load(Ordering::Relaxed);
@@ -312,7 +350,11 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
     if currently_recording {
         let _ = handle.emit("stop-recording", ());
     } else {
-        if let Some(window) = handle.get_webview_window("recording") {
+        if let Ok(mut guard) = handle.state::<RecordingMode>().0.lock() {
+            *guard = Some("shortcut".to_string());
+        }
+
+        if let Some(window) = handle.get_webview_window("whisper") {
             let _ = window.show();
         }
 
@@ -330,6 +372,9 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
 fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
+    let settings_item = MenuItemBuilder::with_id("settings", "Settings\u{2026}")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
     let install_cli_item = MenuItemBuilder::with_id("install-cli", "Install Command Line Tool\u{2026}")
         .build(app)?;
     let open_file_item = MenuItemBuilder::with_id("open-file", "Open\u{2026}")
@@ -339,7 +384,14 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     let app_submenu = SubmenuBuilder::new(app, "Arandu")
         .about(None)
         .separator()
+        .item(&settings_item)
         .item(&install_cli_item)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
         .separator()
         .quit()
         .build()?;
@@ -360,6 +412,8 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
 
     let window_submenu = SubmenuBuilder::new(app, "Window")
         .minimize()
+        .maximize()
+        .separator()
         .close_window()
         .build()?;
 
@@ -375,6 +429,12 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     let app_handle = app.handle().clone();
     app.on_menu_event(move |_app, event| {
         match event.id().as_ref() {
+            "settings" => {
+                if let Some(window) = app_handle.get_webview_window("settings") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
             "install-cli" => {
                 let _ = app_handle.emit("menu-install-cli", ());
             }
@@ -399,7 +459,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_denylist(&["recording"])
+                .with_denylist(&["whisper", "settings"])
                 .build()
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -432,8 +492,10 @@ pub fn run() {
         .manage(InitialFile(Mutex::new(None)))
         .manage(ExplicitQuit(Arc::new(AtomicBool::new(false))))
         .manage(IsRecording(Arc::new(AtomicBool::new(false))))
+        .manage(RecordingMode(Mutex::new(None)))
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
-        .manage(whisper::commands::TranscriberState(Mutex::new(None)));
+        .manage(whisper::commands::TranscriberState(Mutex::new(None)))
+        .manage(acp::commands::AcpState::default());
 
     #[cfg(unix)]
     let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
@@ -444,6 +506,18 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             setup_macos_menu(app)?;
+
+            if let Some(main_window) = app.get_webview_window("main") {
+                let w = main_window.clone();
+                main_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        use tauri_plugin_window_state::AppHandleExt;
+                        let _ = w.app_handle().save_window_state(tauri_plugin_window_state::StateFlags::all());
+                        api.prevent_close();
+                        let _ = w.hide();
+                    }
+                });
+            }
 
             tray::setup(app)?;
 
@@ -458,6 +532,14 @@ pub fn run() {
             if let Err(e) = tcp_ipc::setup(app) {
                 eprintln!("Failed to setup TCP IPC: {}", e);
             }
+
+            let app_data = app.path().app_data_dir()
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            let conn = comments::init_db(&app_data)
+                .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+            sessions::init_sessions_table(&conn)
+                .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+            app.manage(comments::CommentsDb(Mutex::new(conn)));
 
             let shortcut_str = if let Ok(app_data_dir) = app.path().app_data_dir() {
                 let settings = whisper::model_manager::load_settings(&app_data_dir);
@@ -484,6 +566,22 @@ pub fn run() {
                 }) {
                     eprintln!("Failed to register default shortcut: {e}");
                 }
+            }
+
+            let cancel_shortcut_str = if let Ok(dir) = app.path().app_data_dir() {
+                let s = whisper::model_manager::load_settings(&dir);
+                s.cancel_shortcut
+            } else {
+                whisper::model_manager::DEFAULT_CANCEL_SHORTCUT.to_string()
+            };
+
+            let cancel_handle = app.handle().clone();
+            if let Err(e) = app.global_shortcut().on_shortcut(cancel_shortcut_str.as_str(), move |_app, _shortcut, event| {
+                if let ShortcutState::Pressed = event.state {
+                    handle_recording_cancel(&cancel_handle);
+                }
+            }) {
+                eprintln!("Failed to register cancel shortcut '{}': {e}", cancel_shortcut_str);
             }
 
             // Auto-load saved whisper model
@@ -536,17 +634,23 @@ pub fn run() {
             dismiss_cli_prompt,
             load_comments,
             save_comments,
+            count_unresolved_comments,
             hash_file,
             history::load_history,
             history::save_history,
             history::add_to_history,
             history::remove_from_history,
             history::clear_history,
-            show_recording_window,
-            hide_recording_window,
+            show_whisper_window,
+            hide_whisper_window,
+            show_settings_window,
+            update_tray_labels,
             write_clipboard,
+            whisper::commands::is_currently_recording,
             whisper::commands::start_recording,
             whisper::commands::start_recording_button_mode,
+            whisper::commands::start_recording_field_mode,
+            whisper::commands::get_recording_mode,
             whisper::commands::cancel_recording,
             whisper::commands::stop_and_transcribe,
             whisper::commands::load_whisper_model,
@@ -558,9 +662,29 @@ pub fn run() {
             whisper::commands::set_whisper_settings,
             whisper::commands::set_active_model,
             whisper::commands::set_shortcut,
+            whisper::commands::set_cancel_shortcut,
             whisper::commands::check_audio_permissions,
             whisper::commands::list_audio_devices,
             whisper::commands::set_audio_device,
+            acp::commands::acp_connect,
+            acp::commands::acp_disconnect,
+            acp::commands::acp_new_session,
+            acp::commands::acp_list_sessions,
+            acp::commands::acp_load_session,
+            acp::commands::acp_send_prompt,
+            acp::commands::acp_set_mode,
+            acp::commands::acp_cancel,
+            sessions::session_list,
+            sessions::session_create,
+            sessions::session_get,
+            sessions::session_update_acp_id,
+            sessions::session_update_plan,
+            sessions::session_update_plan_file_path,
+            sessions::session_update_phase,
+            sessions::session_delete,
+            plan_file::plan_write,
+            plan_file::plan_read,
+            plan_file::plan_path,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -573,16 +697,28 @@ pub fn run() {
                         let socket_state = app_handle.state::<ipc::SocketState>();
                         ipc::cleanup(socket_state);
                     }
-                    // Cleanup TCP socket
                     {
                         let tcp_socket_state = app_handle.state::<tcp_ipc::TcpSocketState>();
                         tcp_ipc::cleanup(tcp_socket_state);
+                    }
+                    {
+                        let acp_state = app_handle.state::<acp::commands::AcpState>();
+                        tauri::async_runtime::block_on(acp::commands::disconnect_all(&acp_state));
                     }
                     return;
                 }
                 api.prevent_exit();
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.hide();
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
                 }
             }
 

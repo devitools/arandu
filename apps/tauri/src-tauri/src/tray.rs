@@ -100,21 +100,83 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItemBuilder::with_id("show", "Show Window").build(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+fn format_shortcut_label(shortcut: &str) -> String {
+    shortcut
+        .replace("Alt", "⌥")
+        .replace("Shift", "⇧")
+        .replace("Control", "⌃")
+        .replace("Super", "⌘")
+        .replace("Cmd", "⌘")
+        .replace("CmdOrCtrl", "⌘")
+        .replace("+", "")
+}
 
-    let menu = MenuBuilder::new(app).item(&show).separator().item(&quit).build()?;
+struct TrayLabels {
+    show: String,
+    record: String,
+    settings: String,
+    quit: String,
+}
+
+impl Default for TrayLabels {
+    fn default() -> Self {
+        Self {
+            show: "Show Window".to_string(),
+            record: "Record".to_string(),
+            settings: "Settings\u{2026}".to_string(),
+            quit: "Quit".to_string(),
+        }
+    }
+}
+
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    labels: &TrayLabels,
+) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    let app_data_dir = app.path().app_data_dir().unwrap_or_default();
+    let whisper_settings = crate::whisper::model_manager::load_settings(&app_data_dir);
+    let shortcut_label = format_shortcut_label(&whisper_settings.shortcut);
+
+    let show = MenuItemBuilder::with_id("show", &labels.show).build(app)?;
+    let record_title = format!("{}\t{}", labels.record, shortcut_label);
+    let record = MenuItemBuilder::with_id("record", &record_title).build(app)?;
+    let settings = MenuItemBuilder::with_id("settings", &labels.settings).build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", &labels.quit).build(app)?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&show)
+        .item(&record)
+        .separator()
+        .item(&settings)
+        .separator()
+        .item(&quit)
+        .build()?;
+
+    Ok(menu)
+}
+
+pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let labels = TrayLabels::default();
+    let menu = build_tray_menu(app.handle(), &labels)?;
 
     let (icon_data, w, h) = create_tray_icon();
     let icon = Image::new_owned(icon_data, w, h);
 
-    let builder = TrayIconBuilder::new()
+    let builder = TrayIconBuilder::with_id("main")
         .icon(icon)
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
                 show_main_window(app);
+            }
+            "record" => {
+                crate::handle_recording_toggle(app);
+            }
+            "settings" => {
+                if let Some(window) = app.get_webview_window("settings") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
             "quit" => {
                 if let Some(state) = app.try_state::<crate::ExplicitQuit>() {
@@ -139,6 +201,29 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let builder = builder.icon_as_template(true);
 
     builder.build(app)?;
+
+    Ok(())
+}
+
+pub fn update_labels(
+    app: &tauri::AppHandle,
+    show: String,
+    record: String,
+    settings: String,
+    quit: String,
+) -> Result<(), String> {
+    let labels = TrayLabels {
+        show,
+        record,
+        settings,
+        quit,
+    };
+
+    let menu = build_tray_menu(app, &labels).map_err(|e| e.to_string())?;
+
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
