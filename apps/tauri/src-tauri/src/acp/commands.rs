@@ -17,6 +17,8 @@ impl Default for AcpState {
 pub async fn acp_connect(
     workspace_id: String,
     cwd: String,
+    binary_path: Option<String>,
+    gh_token: Option<String>,
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
@@ -25,11 +27,14 @@ pub async fn acp_connect(
         return Ok(());
     }
 
-    let binary = std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string());
+    let binary = binary_path
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
     let conn = AcpConnection::spawn(
         &binary,
         &["--acp", "--stdio"],
         &cwd,
+        gh_token,
         workspace_id.clone(),
         app_handle,
     )

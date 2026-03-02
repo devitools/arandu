@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertCircle, X } from "lucide-react";
 
 interface ErrorConsoleProps {
   errors: string[];
@@ -8,43 +6,26 @@ interface ErrorConsoleProps {
 }
 
 export function ErrorConsole({ errors, onClear }: ErrorConsoleProps) {
-  const [expanded, setExpanded] = useState(true);
-
   if (errors.length === 0) return null;
 
+  const lastError = errors[errors.length - 1];
+
   return (
-    <div className="border-t border-border bg-destructive/[0.03]">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-mono text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors"
-      >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
+    <div className="border-t border-destructive/20 bg-destructive/5 px-3 py-2 flex items-start gap-2">
+      <AlertCircle className="h-3.5 w-3.5 text-destructive/60 mt-0.5 shrink-0" />
+      <p className="flex-1 font-mono text-xs text-destructive/70 break-words leading-relaxed">
+        {lastError}
+        {errors.length > 1 && (
+          <span className="ml-2 text-destructive/40">(+{errors.length - 1})</span>
         )}
-        <span>Errors ({errors.length})</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 w-5 p-0 ml-auto text-muted-foreground/40 hover:text-destructive"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClear();
-          }}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+      </p>
+      <button
+        onClick={onClear}
+        className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors"
+        aria-label="Dismiss"
+      >
+        <X className="h-3.5 w-3.5" />
       </button>
-      {expanded && (
-        <div className="px-4 py-2 max-h-[120px] overflow-y-auto space-y-1">
-          {errors.map((error, i) => (
-            <div key={i} className="font-mono text-xs text-destructive/60 py-1 pl-3 border-l-2 border-destructive/20 break-words">
-              {error}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

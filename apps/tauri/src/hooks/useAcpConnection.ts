@@ -23,9 +23,13 @@ export function useAcpConnection(
     setIsConnecting(true);
     setConnectionError(null);
     try {
+      const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
+      const ghToken = localStorage.getItem("arandu-gh-token") || undefined;
       await invoke("acp_connect", {
         workspaceId,
         cwd: workspacePath,
+        binaryPath,
+        ghToken,
       });
       connectedRef.current = true;
       setIsConnected(true);
