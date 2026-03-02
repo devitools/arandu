@@ -1,4 +1,4 @@
-import { MessageSquare, X } from 'lucide-react';
+import { MessageSquare, MessagesSquare, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,11 +21,12 @@ import { shortenPath } from '@/lib/format-path';
 interface WorkspaceCardProps {
   workspace: Workspace;
   unresolvedComments?: number;
+  sessionCount?: number;
   onExpand: (id: string, rect?: CardRect) => void;
   onClose: (id: string) => void;
 }
 
-export function WorkspaceCard({ workspace, unresolvedComments, onExpand, onClose }: WorkspaceCardProps) {
+export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onExpand, onClose }: WorkspaceCardProps) {
   const { t, i18n } = useTranslation();
 
   const prefix = workspace.type === 'directory' ? 'workspace' : 'document';
@@ -86,6 +87,13 @@ export function WorkspaceCard({ workspace, unresolvedComments, onExpand, onClose
         <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 text-muted-foreground group-hover:opacity-0 transition-opacity">
           <MessageSquare className="h-3 w-3" />
           <span className="font-semibold text-[10px]">{unresolvedComments}</span>
+        </span>
+      )}
+
+      {sessionCount != null && sessionCount > 0 && (
+        <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 text-muted-foreground group-hover:opacity-0 transition-opacity">
+          <MessagesSquare className="h-3 w-3" />
+          <span className="font-semibold text-[10px]">{sessionCount}</span>
         </span>
       )}
 

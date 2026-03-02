@@ -4,6 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body {
+  overscroll-behavior: none;
+}
+
 @layer base {
   :root {
     /* Light Theme - "Papel e Tinta" */
@@ -330,6 +334,7 @@
 .terminal-msg {
   display: grid;
   grid-template-columns: 18px 1fr;
+  align-items: start;
   gap: 0 8px;
   padding: 6px 16px;
 }
@@ -341,11 +346,16 @@
 }
 
 /* Dot indicators */
+.dot-wrapper {
+  line-height: 1.43;
+}
+
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   display: inline-block;
+  vertical-align: middle;
 }
 
 .dot-agent {
@@ -390,6 +400,8 @@
 /* Tool details styling */
 .terminal-msg details summary {
   list-style: none;
+  display: flex;
+  align-items: baseline;
 }
 
 .terminal-msg details summary::-webkit-details-marker {
@@ -403,6 +415,7 @@
   font-weight: bold;
   transition: transform 0.15s ease;
   color: hsl(var(--muted-foreground));
+  flex-shrink: 0;
 }
 
 .terminal-msg details[open] summary::before {

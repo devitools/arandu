@@ -20,8 +20,6 @@ export function SettingsApp() {
     const currentWindow = getCurrentWindow();
     if (currentWindow.label !== "settings") return;
 
-    currentWindow.setTitle(t("settings.title")).catch(console.error);
-
     const handleClose = currentWindow.onCloseRequested(async (event) => {
       event.preventDefault();
       await currentWindow.hide();
@@ -48,7 +46,7 @@ export function SettingsApp() {
           <div className="p-6 flex-1 overflow-y-auto">
             <h1 className="text-lg font-semibold mb-4">{t("settings.title")}</h1>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="mb-4">
+              <TabsList className="mb-4 w-full">
                 <TabsTrigger value="whisper" className="gap-1.5">
                   <Mic className="h-3.5 w-3.5" />
                   {t("settings.whisper")}

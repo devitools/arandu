@@ -759,6 +759,7 @@ pub fn run() {
             acp::commands::acp_send_prompt,
             acp::commands::acp_set_mode,
             acp::commands::acp_cancel,
+            sessions::count_workspace_sessions,
             sessions::session_list,
             sessions::session_create,
             sessions::session_get,

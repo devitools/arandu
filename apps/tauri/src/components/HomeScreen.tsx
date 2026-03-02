@@ -2,7 +2,7 @@ import logoSvg from "@/assets/logo.svg";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/contexts/AppContext";
 import { FileText, FolderOpen } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { WorkspaceCard } from "./WorkspaceCard";
 
@@ -12,6 +12,7 @@ export function HomeScreen () {
   const { t } = useTranslation();
   const { workspaces, openFile, openDirectory, expandWorkspace, closeWorkspace } = useApp();
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
 
   const byRecent = (a: { lastAccessed: Date }, b: { lastAccessed: Date }) =>
     new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime();
@@ -19,11 +20,13 @@ export function HomeScreen () {
   const fileWorkspaces = workspaces.filter((w) => w.type === "file").sort(byRecent);
   const dirWorkspaces = workspaces.filter((w) => w.type === "directory").sort(byRecent);
 
+  const filePaths = useMemo(() => fileWorkspaces.map((w) => w.path), [fileWorkspaces]);
+  const dirPaths = useMemo(() => dirWorkspaces.map((w) => w.path), [dirWorkspaces]);
+
   const fetchCommentCounts = useCallback(async () => {
-    if (fileWorkspaces.length === 0) return;
-    const paths = fileWorkspaces.map((w) => w.path);
+    if (filePaths.length === 0) return;
     try {
-      const results = await invoke<[string, number][]>("count_unresolved_comments", { filePaths: paths });
+      const results = await invoke<[string, number][]>("count_unresolved_comments", { filePaths });
       const counts: Record<string, number> = {};
       for (const [path, count] of results) {
         counts[path] = count;
@@ -32,11 +35,29 @@ export function HomeScreen () {
     } catch {
       // silently ignore
     }
-  }, [fileWorkspaces.map((w) => w.path).join(",")]);
+  }, [filePaths]);
+
+  const fetchSessionCounts = useCallback(async () => {
+    if (dirPaths.length === 0) return;
+    try {
+      const results = await invoke<[string, number][]>("count_workspace_sessions", { workspacePaths: dirPaths });
+      const counts: Record<string, number> = {};
+      for (const [path, count] of results) {
+        counts[path] = count;
+      }
+      setSessionCounts(counts);
+    } catch {
+      // silently ignore
+    }
+  }, [dirPaths]);
 
   useEffect(() => {
     fetchCommentCounts();
   }, [fetchCommentCounts]);
+
+  useEffect(() => {
+    fetchSessionCounts();
+  }, [fetchSessionCounts]);
 
   const handleOpenFile = () => openFile();
   const handleOpenDirectory = () => openDirectory();
@@ -142,6 +163,7 @@ export function HomeScreen () {
                     <WorkspaceCard
                       key={workspace.id}
                       workspace={workspace}
+                      sessionCount={sessionCounts[workspace.path]}
                       onExpand={expandWorkspace}
                       onClose={closeWorkspace}
                     />
