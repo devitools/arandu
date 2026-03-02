@@ -332,6 +332,19 @@ fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn update_menu_labels(
+    app: tauri::AppHandle,
+    settings: String,
+    install_cli: String,
+    file_menu: String,
+    open_file: String,
+) -> Result<(), String> {
+    rebuild_macos_menu(&app, &settings, &install_cli, &file_menu, &open_file)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn update_tray_labels(
     app: tauri::AppHandle,
@@ -369,15 +382,21 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn rebuild_macos_menu(
+    app: &tauri::AppHandle,
+    settings: &str,
+    install_cli: &str,
+    file_menu: &str,
+    open_file: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
-    let settings_item = MenuItemBuilder::with_id("settings", "Settings\u{2026}")
+    let settings_item = MenuItemBuilder::with_id("settings", settings)
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
-    let install_cli_item = MenuItemBuilder::with_id("install-cli", "Install Command Line Tool\u{2026}")
+    let install_cli_item = MenuItemBuilder::with_id("install-cli", install_cli)
         .build(app)?;
-    let open_file_item = MenuItemBuilder::with_id("open-file", "Open\u{2026}")
+    let open_file_item = MenuItemBuilder::with_id("open-file", open_file)
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
 
@@ -396,7 +415,7 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         .quit()
         .build()?;
 
-    let file_submenu = SubmenuBuilder::new(app, "File")
+    let file_submenu = SubmenuBuilder::new(app, file_menu)
         .item(&open_file_item)
         .build()?;
 
@@ -425,6 +444,18 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
         .build()?;
 
     app.set_menu(menu)?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    rebuild_macos_menu(
+        app.handle(),
+        "Settings\u{2026}",
+        "Install Command Line Tool\u{2026}",
+        "File",
+        "Open\u{2026}",
+    )?;
 
     let app_handle = app.handle().clone();
     app.on_menu_event(move |_app, event| {
@@ -654,6 +685,8 @@ pub fn run() {
             hide_whisper_window,
             show_settings_window,
             update_tray_labels,
+            #[cfg(target_os = "macos")]
+            update_menu_labels,
             write_clipboard,
             whisper::commands::is_currently_recording,
             whisper::commands::start_recording,

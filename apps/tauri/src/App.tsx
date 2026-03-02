@@ -7,7 +7,7 @@ import { MarkdownViewer } from "@/components/MarkdownViewer";
 import { DirectoryWorkspace } from "@/components/DirectoryWorkspace";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { initHomeDir } from "@/lib/format-path";
-import { updateTrayLabels } from "@/lib/tray-sync";
+import { updateTrayLabels, updateMenuLabels } from "@/lib/tray-sync";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -206,6 +206,7 @@ function App() {
   useEffect(() => {
     initHomeDir().catch(console.error);
     updateTrayLabels(localStorage.getItem("arandu-language") || "pt-BR");
+    updateMenuLabels(localStorage.getItem("arandu-language") || "pt-BR");
 
     const showWindow = async () => {
       const appWindow = getCurrentWindow();

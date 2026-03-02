@@ -143,6 +143,16 @@
     "settings": "Configurações\u2026",
     "quit": "Sair"
   },
+  "menu": {
+    "arandu": {
+      "settings": "Configurações\u2026",
+      "installCli": "Instalar Ferramenta de Linha de Comando\u2026"
+    },
+    "file": {
+      "title": "Arquivo",
+      "open": "Abrir\u2026"
+    }
+  },
   "plan": {
     "emptyState": "O plano aparecerá aqui quando a sessão iniciar",
     "openPlan": "Abrir Plano",
