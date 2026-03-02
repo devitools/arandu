@@ -177,6 +177,7 @@ pub fn delete_session(conn: &Connection, id: &str) -> Result<(), String> {
 // --- Tauri commands ---
 
 use crate::comments::CommentsDb;
+use tauri::Manager;
 
 #[tauri::command]
 pub fn session_list(
@@ -251,7 +252,11 @@ pub fn session_update_plan_file_path(
 pub fn session_delete(
     id: String,
     db: tauri::State<CommentsDb>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    delete_session(&conn, &id)
+    delete_session(&conn, &id)?;
+    let app_data = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    crate::plan_file::delete_plan(&app_data, &id)
 }
