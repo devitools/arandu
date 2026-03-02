@@ -317,6 +317,7 @@ export function ActiveSessionView({
               onCancel={acp.cancel}
               onClearErrors={acp.clearErrors}
               onReconnect={handleReconnect}
+              initialPrompt={session.initial_prompt || undefined}
             />
           </div>
         </ResizablePanel>
