@@ -62,7 +62,7 @@ export function useAcpConnection(
   // Check health when the window regains visibility (e.g., unminimize)
   useEffect(() => {
     const onVisible = () => {
-      if (connectedRef.current) {
+      if (!document.hidden && connectedRef.current) {
         invoke("acp_check_health", { workspaceId }).catch(() => {});
       }
     };
