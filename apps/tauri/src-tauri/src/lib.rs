@@ -495,7 +495,11 @@ pub fn run() {
         .manage(RecordingMode(Mutex::new(None)))
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)))
-        .manage(acp::commands::AcpState::default());
+        .manage(acp::commands::AcpState::default())
+        .manage(whisper::watcher::WhisperWatcherState {
+            models_watcher: Mutex::new(None),
+            settings_watcher: Mutex::new(None),
+        });
 
     #[cfg(unix)]
     let builder = builder.manage(ipc::SocketState(Mutex::new(None)));
@@ -598,6 +602,11 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            // Initialize whisper file watchers (models dir + settings file)
+            if let Err(e) = whisper::watcher::init(app) {
+                eprintln!("Failed to setup whisper file watchers: {}", e);
             }
 
             let matches = app.cli().matches().ok();
