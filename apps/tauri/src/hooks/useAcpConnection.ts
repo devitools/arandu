@@ -49,6 +49,11 @@ export function useAcpConnection(
     }).then((fn: () => void) => {
       if (cancelled) fn();
       else unlisten = fn;
+    }).catch((e: unknown) => {
+      if (!cancelled) {
+        setConnectionError(String(e));
+        setConnectionStatus("disconnected");
+      }
     });
 
     return () => {
@@ -93,7 +98,6 @@ export function useAcpConnection(
   }, [workspaceId, workspacePath, connectionStatus]);
 
   const disconnect = useCallback(async () => {
-    if (!connectedRef.current) return;
     try {
       await window.__TAURI__.core.invoke("acp_disconnect", { workspaceId });
     } catch {
@@ -106,10 +110,8 @@ export function useAcpConnection(
 
   useEffect(() => {
     return () => {
-      if (connectedRef.current) {
-        window.__TAURI__.core.invoke("acp_disconnect", { workspaceId }).catch(() => {});
-        connectedRef.current = false;
-      }
+      window.__TAURI__.core.invoke("acp_disconnect", { workspaceId }).catch(() => {});
+      connectedRef.current = false;
     };
   }, [workspaceId]);
 
