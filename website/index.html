@@ -9,7 +9,7 @@
   <title>Arandu — A beautiful way to read Markdown</title>
   <meta
     name="description"
-    content="A minimal, elegant Markdown viewer for macOS, Linux, and Windows. GitHub Flavored Markdown, syntax highlighting, live reload, and outline navigation."
+    content="Markdown viewer and AI workspace for macOS, Linux, and Windows. Connect any coding agent, review plans, transcribe with Whisper, and read GitHub Flavored Markdown beautifully."
   >
   <link
     rel="icon"
@@ -45,6 +45,7 @@
       </a>
       <nav>
         <a href="#features">Features</a>
+        <a href="#docs">Docs</a>
         <a href="#download">Download</a>
         <a
           href="https://github.com/devitools/arandu"
@@ -72,8 +73,8 @@
         read Markdown.
       </h1>
       <p class="subtitle">
-        Minimal viewer with GitHub Flavored Markdown, syntax highlighting,
-        live reload, and outline navigation. Cross-platform. Powered by Tauri.
+        Markdown viewer and AI workspace — connect your coding agent, review plans,
+        transcribe voice notes, and read docs beautifully. Cross-platform. Powered by Tauri.
       </p>
       <div class="cta">
         <a
@@ -287,35 +288,28 @@ arandu *.md</code></pre>
 
     <div class="feature-split fade-in">
       <div class="feature-text">
-        <h2>Plan Review Comments</h2>
-        <p>GitHub-style inline commenting for markdown files. Select blocks, add feedback,
-        and generate consolidated review prompts for AI coding assistants. Perfect for
-        document review workflows.</p>
+        <h2>AI Workspace</h2>
+        <p>Connect any coding agent — GitHub Copilot, Cursor, and others — and work in
+        structured sessions tied to your project. Chat, plan, review, and execute without
+        leaving your Markdown context.</p>
       </div>
       <div class="feature-visual">
         <div class="mini-mockup">
           <div class="mockup-content markdown-body">
-            <h2>Installation</h2>
-            <p>Quick start guide for Arandu <span class="comment-badge">2</span></p>
-            <pre><code>brew install --cask devitools/arandu/arandu</code></pre>
+            <h2>Architecture Decision</h2>
+            <p>Proposal for the new data layer <span class="comment-badge">1</span></p>
+            <pre><code>Use repository pattern with SQLite</code></pre>
           </div>
-          <div class="plan-review-bar">
-            <div class="bar-header">
-              <span class="bar-title">PLAN REVIEWS <span class="count-pill">2</span></span>
-              <button class="bar-btn-primary">Generate Review</button>
+          <div class="terminal-chat">
+            <div class="terminal-msg user">Review this plan and suggest improvements</div>
+            <div class="terminal-msg agent">
+              <span class="agent-label">plan</span>
+              Consider adding a caching layer between the repository and the UI...
             </div>
-            <div class="bar-item">
-              <div class="bar-indicators">
-                <span class="block-indicator">H2</span>
-                <span class="block-indicator">P3</span>
-              </div>
-              <div class="bar-text">Consider adding Linux install instructions</div>
-            </div>
-            <div class="bar-item">
-              <div class="bar-indicators">
-                <span class="block-indicator">C4</span>
-              </div>
-              <div class="bar-text">This command requires Homebrew pre-installed</div>
+            <div class="terminal-msg user">Create a detailed implementation plan</div>
+            <div class="terminal-msg agent">
+              <span class="agent-label">code</span>
+              Plan created · <span class="plan-phase-badge">reviewing</span>
             </div>
           </div>
         </div>
@@ -481,7 +475,106 @@ arandu *.md</code></pre>
             <h3>Voice to Text</h3>
             <p>Built-in speech transcription with OpenAI Whisper. Works offline, no API keys.</p>
           </div>
+          <div class="compact-feature">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            <h3>Multi-language</h3>
+            <p>Available in English and Portuguese. Language syncs across all windows and the system tray.</p>
+          </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="docs">
+    <div class="container">
+      <h2>Documentation</h2>
+      <p class="docs-subtitle">Learn how to get the most out of Arandu.</p>
+      <div class="docs-accordion fade-in">
+
+        <div class="docs-item">
+          <button class="docs-item-header" id="docs-cli-header" aria-expanded="false" aria-controls="docs-cli-body">
+            <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <div class="docs-item-title">
+              <strong>Command Line Tool</strong>
+              <span>Open files from your terminal, integrate with scripts</span>
+            </div>
+            <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="docs-item-body" id="docs-cli-body" role="region" aria-labelledby="docs-cli-header">
+            <h4>Installation</h4>
+            <p>On first launch, Arandu offers to install the <code>arandu</code> CLI automatically. You can also install it later via <strong>Arandu → Install Command Line Tool…</strong> in the menu bar, or install via Homebrew:</p>
+            <pre>brew install --cask devitools/arandu/arandu</pre>
+            <h4>Usage</h4>
+            <pre>arandu README.md           # open a file
+arandu doc1.md doc2.md     # open multiple files
+arandu *.md                # open all .md files in current directory
+arandu                     # open the file picker</pre>
+            <p>If Arandu is already running, files open instantly via IPC. Otherwise the app launches automatically.</p>
+          </div>
+        </div>
+
+        <div class="docs-item">
+          <button class="docs-item-header" id="docs-whisper-header" aria-expanded="false" aria-controls="docs-whisper-body">
+            <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            <div class="docs-item-title">
+              <strong>Voice to Text</strong>
+              <span>Offline transcription with OpenAI Whisper — no API keys needed</span>
+            </div>
+            <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="docs-item-body" id="docs-whisper-body" role="region" aria-labelledby="docs-whisper-header">
+            <h4>Setup</h4>
+            <p>Go to <strong>Settings → Voice to Text</strong> and download a Whisper model. Transcription runs entirely on your device — no internet connection or API key required.</p>
+            <ul>
+              <li><strong>tiny</strong> (~75 MB) — fastest, good for quick notes</li>
+              <li><strong>base</strong> (~140 MB) — balanced speed and accuracy</li>
+              <li><strong>small</strong> (~460 MB) — better accuracy for technical content</li>
+              <li><strong>medium</strong> (~1.5 GB) — highest accuracy</li>
+            </ul>
+            <h4>Usage</h4>
+            <p>Press the global shortcut (configurable in Settings) to open the floating recording window. Speak your text, then click to stop — the transcription is copied to your clipboard automatically. You can also configure the audio input device in Settings.</p>
+          </div>
+        </div>
+
+        <div class="docs-item">
+          <button class="docs-item-header" id="docs-ai-header" aria-expanded="false" aria-controls="docs-ai-body">
+            <svg class="docs-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <div class="docs-item-title">
+              <strong>AI Workspace</strong>
+              <span>Connect a coding agent and work in structured sessions</span>
+            </div>
+            <svg class="docs-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="docs-item-body" id="docs-ai-body" role="region" aria-labelledby="docs-ai-header">
+            <h4>Connecting an Agent</h4>
+            <p>Open a workspace directory, then click <strong>Connect</strong> to start a session. Arandu communicates with coding agents (such as GitHub Copilot CLI) via the Agent Communication Protocol (ACP) over stdin/stdout.</p>
+            <h4>Interaction Modes</h4>
+            <div class="mode-grid">
+              <div class="mode-card"><div class="mode-name">ask</div><div class="mode-desc">General questions and explanations</div></div>
+              <div class="mode-card"><div class="mode-name">plan</div><div class="mode-desc">Create a structured implementation plan</div></div>
+              <div class="mode-card"><div class="mode-name">code</div><div class="mode-desc">Generate and modify code</div></div>
+              <div class="mode-card"><div class="mode-name">edit</div><div class="mode-desc">Apply targeted edits to files</div></div>
+              <div class="mode-card"><div class="mode-name">agent</div><div class="mode-desc">Autonomous multi-step execution</div></div>
+              <div class="mode-card"><div class="mode-name">autopilot</div><div class="mode-desc">Fully automated task completion</div></div>
+            </div>
+            <h4>Plan Workflow</h4>
+            <p>Switch to <strong>plan</strong> mode to generate a plan document. Review it inline with block comments, then move to the <strong>executing</strong> phase — all tracked per session within your workspace directory.</p>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -490,6 +583,49 @@ arandu *.md</code></pre>
     <div class="container">
       <h2>Download</h2>
       <p class="download-subtitle">Choose the right version for your operating system.</p>
+
+      <div class="quick-install fade-in">
+        <p class="quick-install-label">Quick Install</p>
+        <div class="install-options">
+          <div class="install-option">
+            <span class="install-os-tag">macOS</span>
+            <span class="install-via-tag">Homebrew</span>
+            <div class="install-cmd-row">
+              <code class="install-cmd">brew install --cask devitools/arandu/arandu</code>
+              <button class="install-copy-btn">
+                <svg class="icon-copy" width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/></svg>
+                <svg class="icon-check" width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>
+                Copy
+              </button>
+            </div>
+          </div>
+          <div class="install-option soon">
+            <span class="install-os-tag">Linux</span>
+            <span class="install-via-tag">Snap</span>
+            <div class="install-cmd-row">
+              <code class="install-cmd">snap install arandu</code>
+              <span class="soon-tag">soon</span>
+            </div>
+          </div>
+          <div class="install-option soon">
+            <span class="install-os-tag">Linux</span>
+            <span class="install-via-tag">Flatpak</span>
+            <div class="install-cmd-row">
+              <code class="install-cmd">flatpak install flathub io.devitools.Arandu</code>
+              <span class="soon-tag">soon</span>
+            </div>
+          </div>
+          <div class="install-option soon">
+            <span class="install-os-tag">Windows</span>
+            <span class="install-via-tag">winget</span>
+            <div class="install-cmd-row">
+              <code class="install-cmd">winget install devitools.Arandu</code>
+              <span class="soon-tag">soon</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="download-grid">
         <div
           class="download-card fade-in"
@@ -503,12 +639,21 @@ arandu *.md</code></pre>
             <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
           </svg>
           <h3>macOS</h3>
-          <p>Tauri app</p>
-          <a
-            href="https://github.com/devitools/arandu/releases/latest"
-            class="btn btn-primary"
-          >Download DMG
-          </a>
+          <p>Requires macOS 13+</p>
+          <div class="download-links">
+            <a
+              data-asset="macos-arm"
+              href="https://github.com/devitools/arandu/releases/latest"
+              class="btn btn-primary"
+            >Apple Silicon
+            </a>
+            <a
+              data-asset="macos-intel"
+              href="https://github.com/devitools/arandu/releases/latest"
+              class="btn btn-secondary"
+            >Intel
+            </a>
+          </div>
         </div>
         <div
           class="download-card fade-in"
@@ -524,14 +669,16 @@ arandu *.md</code></pre>
             />
           </svg>
           <h3>Linux</h3>
-          <p>Tauri app</p>
+          <p>x86_64</p>
           <div class="download-links">
             <a
+              data-asset="linux-appimage"
               href="https://github.com/devitools/arandu/releases/latest"
               class="btn btn-primary"
             >AppImage
             </a>
             <a
+              data-asset="linux-deb"
               href="https://github.com/devitools/arandu/releases/latest"
               class="btn btn-secondary"
             >.deb
@@ -550,8 +697,9 @@ arandu *.md</code></pre>
             <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801" />
           </svg>
           <h3>Windows</h3>
-          <p>Tauri app</p>
+          <p>x86_64</p>
           <a
+            data-asset="windows-exe"
             href="https://github.com/devitools/arandu/releases/latest"
             class="btn btn-primary"
           >Download .exe
