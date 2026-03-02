@@ -28,7 +28,7 @@ const PHASE_COLORS: Record<PlanPhase, string> = {
   planning: "bg-yellow-500",
   reviewing: "bg-blue-500",
   executing: "bg-green-500",
-  done: "bg-emerald-500",
+  done: "bg-purple-500",
 };
 
 const PHASE_KEYS: Record<PlanPhase, string> = {
