@@ -129,7 +129,10 @@
     "whisper": "Voice-to-Text",
     "theme": "Theme",
     "language": "Language",
-    "openSettings": "Settings"
+    "openSettings": "Settings",
+    "copilotPath": "Copilot binary path",
+    "copilotPathPlaceholder": "e.g. /usr/local/bin/copilot",
+    "copilotPathHint": "Leave blank to use default ($COPILOT_PATH or 'copilot')"
   },
   "tray": {
     "show": "Show Window",

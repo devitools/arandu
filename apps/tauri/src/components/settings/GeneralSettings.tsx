@@ -1,4 +1,5 @@
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,13 +11,40 @@ import { useTheme } from "next-themes";
 import { useTranslation } from "react-i18next";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { updateTrayLabels } from "@/lib/tray-sync";
+import { useState } from "react";
+
+const COPILOT_PATH_KEY = "arandu-copilot-path";
 
 export function GeneralSettings() {
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
+  const [copilotPath, setCopilotPath] = useState(
+    () => localStorage.getItem(COPILOT_PATH_KEY) ?? ""
+  );
+
+  function handleCopilotPathChange(value: string) {
+    setCopilotPath(value);
+    if (value.trim()) {
+      localStorage.setItem(COPILOT_PATH_KEY, value.trim());
+    } else {
+      localStorage.removeItem(COPILOT_PATH_KEY);
+    }
+  }
 
   return (
     <div className="space-y-6">
+      {/* Copilot Binary Path */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">{t("settings.copilotPath")}</Label>
+        <Input
+          className="w-full font-mono text-sm"
+          placeholder={t("settings.copilotPathPlaceholder")}
+          value={copilotPath}
+          onChange={(e) => handleCopilotPathChange(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">{t("settings.copilotPathHint")}</p>
+      </div>
+
       {/* Theme */}
       <div className="space-y-2">
         <Label className="text-sm font-medium">{t("settings.theme")}</Label>

@@ -23,9 +23,11 @@ export function useAcpConnection(
     setIsConnecting(true);
     setConnectionError(null);
     try {
+      const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
       await invoke("acp_connect", {
         workspaceId,
         cwd: workspacePath,
+        binaryPath,
       });
       connectedRef.current = true;
       setIsConnected(true);
