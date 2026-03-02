@@ -127,6 +127,7 @@
     "title": "Settings",
     "general": "General",
     "whisper": "Voice-to-Text",
+    "cli": "CLI",
     "theme": "Theme",
     "language": "Language",
     "openSettings": "Settings",
@@ -135,7 +136,18 @@
     "copilotPathHint": "Leave blank to use default ($COPILOT_PATH or 'copilot')",
     "ghToken": "GitHub Token",
     "ghTokenPlaceholder": "ghp_... or gho_...",
-    "ghTokenHint": "Required in production builds. Get it with: gh auth token"
+    "ghTokenHint": "Required in production builds. Get it with: gh auth token",
+    "cliTitle": "CLI Installer",
+    "cliStatusInstalled": "Installed",
+    "cliStatusNotInstalled": "Not installed",
+    "cliSuggestedPaths": "Suggested paths",
+    "cliCustomPath": "Custom path",
+    "cliCustomPathPlaceholder": "e.g. /usr/local/bin",
+    "cliInstall": "Install",
+    "cliInstalling": "Installing...",
+    "cliSuccess": "Installed successfully at {{path}}",
+    "cliError": "Installation failed: {{error}}",
+    "cliHint": "User paths (~/…) install without password. System paths may require administrator access."
   },
   "tray": {
     "show": "Show Window",
@@ -146,7 +158,7 @@
   "menu": {
     "arandu": {
       "settings": "Settings\u2026",
-      "installCli": "Install Command Line Tool\u2026"
+      "installCli": "Install CLI\u2026"
     },
     "file": {
       "title": "File",

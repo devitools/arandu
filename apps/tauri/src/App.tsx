@@ -14,7 +14,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 const { getCurrentWindow } = window.__TAURI__.window;
 const { invoke } = window.__TAURI__.core;
-const { listen } = window.__TAURI__.event;
+const { listen, emit } = window.__TAURI__.event;
 
 const EXPAND_EASING = "cubic-bezier(0.3, 0.0, 0.0, 1)";
 const MINIMIZE_EASING = "cubic-bezier(0.3, 0.0, 0.8, 0.15)";
@@ -143,9 +143,15 @@ function AppContent() {
       openFile();
     });
 
+    const unlistenInstallCli = listen("menu-install-cli", () => {
+      invoke("show_settings_window").catch(console.error);
+      emit("open-settings-tab", "cli").catch(console.error);
+    });
+
     return () => {
       unlistenOpen.then((fn) => fn());
       unlistenMenu.then((fn) => fn());
+      unlistenInstallCli.then((fn) => fn());
     };
   }, [openFile]);
 
