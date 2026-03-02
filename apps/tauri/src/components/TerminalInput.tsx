@@ -55,7 +55,7 @@ export function TerminalInput({
             onClick={onCancel}
             size="sm"
             variant="destructive"
-            className="text-xs gap-1.5"
+            className="text-xs gap-1.5 min-w-[100px]"
           >
             <Square className="h-3 w-3" />
             {t("acp.cancel")}
@@ -63,7 +63,7 @@ export function TerminalInput({
         ) : (
           <Button
             size="sm"
-            className="text-xs gap-1.5 font-mono"
+            className="text-xs gap-1.5 font-mono min-w-[100px]"
             onClick={handleSend}
             disabled={!input.trim() || disabled}
           >

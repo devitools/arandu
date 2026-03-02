@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Check, Download, Keyboard, Loader2, Mic, Shield, Trash2 } from "lucide-react";
+import { Check, Download, Keyboard, Loader2, Mic, Trash2 } from "lucide-react";
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -268,33 +268,31 @@ export function WhisperSettings() {
       {/* Microphone */}
       <div className="space-y-2">
         <Label className="text-sm font-medium">{t("whisper.audioDevice")}</Label>
-        <div className="flex items-center gap-2">
-          <Select
-            value={settings.selected_device ?? "__default__"}
-            onValueChange={handleDeviceChange}
-          >
-            <SelectTrigger className="flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__default__">{t("whisper.defaultDevice")}</SelectItem>
-              {devices.map((d) => (
-                <SelectItem key={d.name} value={d.name}>
-                  {d.name} {d.is_default ? `(${t("whisper.defaultDevice")})` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={handleCheckPermissions}
-            title={t("whisper.checkPermissions")}
-          >
-            <Shield className="h-4 w-4" />
-          </Button>
-        </div>
+        <Select
+          value={settings.selected_device ?? "__default__"}
+          onValueChange={handleDeviceChange}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__default__">{t("whisper.defaultDevice")}</SelectItem>
+            {devices.map((d) => (
+              <SelectItem key={d.name} value={d.name}>
+                {d.name} {d.is_default ? `(${t("whisper.defaultDevice")})` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={handleCheckPermissions}
+        >
+          <Mic className="h-3.5 w-3.5 mr-1.5" />
+          {t("whisper.checkPermissions")}
+        </Button>
       </div>
 
       {/* Long Recording Alert */}
@@ -401,18 +399,6 @@ export function WhisperSettings() {
         </div>
       </div>
 
-      {/* Check Permissions */}
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs"
-          onClick={handleCheckPermissions}
-        >
-          <Mic className="h-3.5 w-3.5 mr-1.5" />
-          {t("whisper.checkPermissions")}
-        </Button>
-      </div>
     </div>
   );
 }
