@@ -93,4 +93,68 @@
       }
     })
   }
+  // Accordion for docs section
+  document.querySelectorAll('.docs-item-header').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var item = btn.closest('.docs-item')
+      var isOpen = item.classList.contains('open')
+      document.querySelectorAll('.docs-item').forEach(function (el) {
+        el.classList.remove('open')
+        var h = el.querySelector('.docs-item-header')
+        if (h) h.setAttribute('aria-expanded', 'false')
+      })
+      if (!isOpen) {
+        item.classList.add('open')
+        btn.setAttribute('aria-expanded', 'true')
+      }
+    })
+  })
+
+  // Install copy buttons
+  document.querySelectorAll('.install-copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var option = btn.closest('.install-option')
+      var cmdEl = option ? option.querySelector('.install-cmd') : null
+      if (!cmdEl) return
+      var cmd = cmdEl.textContent
+      if (!cmd) return
+      navigator.clipboard.writeText(cmd).then(function () {
+        btn.classList.add('copied')
+        setTimeout(function () { btn.classList.remove('copied') }, 1500)
+      })
+    })
+  })
+
+  // Fetch latest release and update download links
+  var releasesUrl = 'https://github.com/devitools/arandu/releases/latest'
+  fetch('https://api.github.com/repos/devitools/arandu/releases/latest')
+    .then(function (r) { return r.json() })
+    .then(function (release) {
+      var assets = release.assets || []
+      var map = {}
+      assets.forEach(function (asset) {
+        var name = asset.name.toLowerCase()
+        var url = asset.browser_download_url
+        if (name.includes('aarch64') && name.endsWith('.dmg')) map['macos-arm'] = url
+        else if (name.includes('x64') && name.endsWith('.dmg')) map['macos-intel'] = url
+        else if (name.endsWith('.appimage')) map['linux-appimage'] = url
+        else if (name.endsWith('.deb')) map['linux-deb'] = url
+        else if (name.endsWith('.exe')) map['windows-exe'] = url
+      })
+      Object.keys(map).forEach(function (key) {
+        document.querySelectorAll('[data-asset="' + key + '"]').forEach(function (el) {
+          el.href = map[key]
+        })
+      })
+      // Update CTA button to direct download based on OS
+      var ctaBtn = document.getElementById('cta-download')
+      if (ctaBtn) {
+        var assetKey = os === 'macos' ? 'macos-arm' : (os === 'linux' ? 'linux-appimage' : 'windows-exe')
+        ctaBtn.href = map[assetKey] || releasesUrl
+      }
+    })
+    .catch(function () {
+      var ctaBtn = document.getElementById('cta-download')
+      if (ctaBtn) ctaBtn.href = releasesUrl
+    })
 })()
