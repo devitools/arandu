@@ -24,16 +24,23 @@ impl AcpConnection {
         binary: &str,
         args: &[&str],
         cwd: &str,
+        gh_token: Option<String>,
         workspace_id: String,
         app_handle: AppHandle,
     ) -> Result<Self, String> {
-        let mut child = Command::new(binary)
-            .args(args)
+        let mut cmd = Command::new(binary);
+        cmd.args(args)
             .current_dir(cwd)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+
+        if let Some(token) = gh_token.filter(|s| !s.trim().is_empty()) {
+            cmd.env("GH_TOKEN", token.trim());
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", binary, e))?;
 

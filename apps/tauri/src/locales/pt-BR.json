@@ -132,7 +132,10 @@
     "openSettings": "Configurações",
     "copilotPath": "Caminho do binário Copilot",
     "copilotPathPlaceholder": "ex. /usr/local/bin/copilot",
-    "copilotPathHint": "Deixe em branco para usar o padrão ($COPILOT_PATH ou 'copilot')"
+    "copilotPathHint": "Deixe em branco para usar o padrão ($COPILOT_PATH ou 'copilot')",
+    "ghToken": "GitHub Token",
+    "ghTokenPlaceholder": "ghp_... ou gho_...",
+    "ghTokenHint": "Necessário em builds de produção. Obtenha com: gh auth token"
   },
   "tray": {
     "show": "Mostrar Janela",

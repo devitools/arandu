@@ -18,6 +18,7 @@ pub async fn acp_connect(
     workspace_id: String,
     cwd: String,
     binary_path: Option<String>,
+    gh_token: Option<String>,
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
@@ -33,6 +34,7 @@ pub async fn acp_connect(
         &binary,
         &["--acp", "--stdio"],
         &cwd,
+        gh_token,
         workspace_id.clone(),
         app_handle,
     )

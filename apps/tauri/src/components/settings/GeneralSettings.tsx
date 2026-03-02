@@ -14,12 +14,16 @@ import { updateTrayLabels } from "@/lib/tray-sync";
 import { useState } from "react";
 
 const COPILOT_PATH_KEY = "arandu-copilot-path";
+const GH_TOKEN_KEY = "arandu-gh-token";
 
 export function GeneralSettings() {
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
   const [copilotPath, setCopilotPath] = useState(
     () => localStorage.getItem(COPILOT_PATH_KEY) ?? ""
+  );
+  const [ghToken, setGhToken] = useState(
+    () => localStorage.getItem(GH_TOKEN_KEY) ?? ""
   );
 
   function handleCopilotPathChange(value: string) {
@@ -31,8 +35,30 @@ export function GeneralSettings() {
     }
   }
 
+  function handleGhTokenChange(value: string) {
+    setGhToken(value);
+    if (value.trim()) {
+      localStorage.setItem(GH_TOKEN_KEY, value.trim());
+    } else {
+      localStorage.removeItem(GH_TOKEN_KEY);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* GitHub Token */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">{t("settings.ghToken")}</Label>
+        <Input
+          className="w-full font-mono text-sm"
+          type="password"
+          placeholder={t("settings.ghTokenPlaceholder")}
+          value={ghToken}
+          onChange={(e) => handleGhTokenChange(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">{t("settings.ghTokenHint")}</p>
+      </div>
+
       {/* Copilot Binary Path */}
       <div className="space-y-2">
         <Label className="text-sm font-medium">{t("settings.copilotPath")}</Label>
