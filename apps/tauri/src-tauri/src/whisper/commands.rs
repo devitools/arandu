@@ -4,10 +4,14 @@ use super::transcriber::WhisperTranscriber;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
-
 pub struct RecorderState(pub Mutex<Option<AudioRecorder>>);
 pub struct TranscriberState(pub Mutex<Option<WhisperTranscriber>>);
+
+#[tauri::command]
+pub fn is_currently_recording(app: tauri::AppHandle) -> bool {
+    let is_recording = app.state::<crate::IsRecording>();
+    is_recording.0.load(Ordering::Relaxed)
+}
 
 #[tauri::command]
 pub fn start_recording(
@@ -41,10 +45,41 @@ pub fn start_recording_button_mode(
     let result = start_recording(state, app.clone());
 
     if result.is_ok() {
+        if let Ok(mut guard) = app.state::<crate::RecordingMode>().0.lock() {
+            *guard = Some("button".to_string());
+        }
+        if let Some(window) = app.get_webview_window("whisper") {
+            let _ = window.show();
+        }
         let _ = app.emit("start-recording-button", ());
     }
 
     result
+}
+
+#[tauri::command]
+pub fn start_recording_field_mode(
+    state: tauri::State<RecorderState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let result = start_recording(state, app.clone());
+
+    if result.is_ok() {
+        if let Ok(mut guard) = app.state::<crate::RecordingMode>().0.lock() {
+            *guard = Some("field".to_string());
+        }
+        if let Some(window) = app.get_webview_window("whisper") {
+            let _ = window.show();
+        }
+        let _ = app.emit("start-recording-field", ());
+    }
+
+    result
+}
+
+#[tauri::command]
+pub fn get_recording_mode(app: tauri::AppHandle) -> Option<String> {
+    app.state::<crate::RecordingMode>().0.lock().ok().and_then(|g| g.clone())
 }
 
 #[tauri::command]
@@ -188,6 +223,34 @@ pub fn set_active_model(
     Ok(())
 }
 
+fn register_all_shortcuts(app: &tauri::AppHandle, settings: &model_manager::WhisperSettings) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| format!("Failed to unregister shortcuts: {}", e))?;
+
+    let handle = app.clone();
+    app.global_shortcut()
+        .on_shortcut(settings.shortcut.as_str(), move |_app, _shortcut, event| {
+            if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
+                crate::handle_recording_toggle(&handle);
+            }
+        })
+        .map_err(|e| format!("Failed to register shortcut '{}': {}", settings.shortcut, e))?;
+
+    let cancel_handle = app.clone();
+    app.global_shortcut()
+        .on_shortcut(settings.cancel_shortcut.as_str(), move |_app, _shortcut, event| {
+            if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
+                crate::handle_recording_cancel(&cancel_handle);
+            }
+        })
+        .map_err(|e| format!("Failed to register cancel shortcut '{}': {}", settings.cancel_shortcut, e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_shortcut(shortcut: String, app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_global_shortcut::Shortcut;
@@ -198,21 +261,29 @@ pub fn set_shortcut(shortcut: String, app: tauri::AppHandle) -> Result<(), Strin
         .parse::<Shortcut>()
         .map_err(|e| format!("Invalid shortcut '{}': {}", shortcut, e))?;
 
-    app.global_shortcut()
-        .unregister_all()
-        .map_err(|e| format!("Failed to unregister shortcuts: {}", e))?;
-
-    let handle = app.clone();
-    app.global_shortcut()
-        .on_shortcut(shortcut.as_str(), move |_app, _shortcut, event| {
-            if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
-                crate::handle_recording_toggle(&handle);
-            }
-        })
-        .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
-
     let mut settings = model_manager::load_settings(&app_data_dir);
     settings.shortcut = shortcut;
+
+    register_all_shortcuts(&app, &settings)?;
+    model_manager::save_settings(&app_data_dir, &settings)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_cancel_shortcut(shortcut: String, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+
+    shortcut
+        .parse::<Shortcut>()
+        .map_err(|e| format!("Invalid shortcut '{}': {}", shortcut, e))?;
+
+    let mut settings = model_manager::load_settings(&app_data_dir);
+    settings.cancel_shortcut = shortcut;
+
+    register_all_shortcuts(&app, &settings)?;
     model_manager::save_settings(&app_data_dir, &settings)?;
 
     Ok(())

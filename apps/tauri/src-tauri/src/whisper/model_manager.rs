@@ -50,6 +50,7 @@ pub struct ModelStatus {
 }
 
 pub const DEFAULT_SHORTCUT: &str = "Alt+Space";
+pub const DEFAULT_CANCEL_SHORTCUT: &str = "Alt+Shift+Space";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WhisperSettings {
@@ -57,6 +58,8 @@ pub struct WhisperSettings {
     pub language: String,
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
+    #[serde(default = "default_cancel_shortcut")]
+    pub cancel_shortcut: String,
     pub selected_device: Option<String>,
     #[serde(default = "default_long_recording_threshold")]
     pub long_recording_threshold: u32,
@@ -64,6 +67,10 @@ pub struct WhisperSettings {
 
 fn default_shortcut() -> String {
     DEFAULT_SHORTCUT.to_string()
+}
+
+fn default_cancel_shortcut() -> String {
+    DEFAULT_CANCEL_SHORTCUT.to_string()
 }
 
 fn default_long_recording_threshold() -> u32 {
@@ -76,6 +83,7 @@ impl Default for WhisperSettings {
             active_model: None,
             language: "auto".to_string(),
             shortcut: DEFAULT_SHORTCUT.to_string(),
+            cancel_shortcut: DEFAULT_CANCEL_SHORTCUT.to_string(),
             selected_device: None,
             long_recording_threshold: 60,
         }

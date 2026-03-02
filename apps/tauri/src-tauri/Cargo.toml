@@ -28,6 +28,9 @@ cpal = "0.15"
 rubato = "0.16"
 whisper-rs = "0.15"
 reqwest = { version = "0.12", features = ["stream"] }
-tokio = { version = "1", features = ["fs", "net", "io-util"] }
+tokio = { version = "1", features = ["fs", "net", "io-util", "process", "sync", "time"] }
 futures-util = "0.3"
 sha2 = "0.10"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"

@@ -1,0 +1,34 @@
+# RepoPrompt global ignore defaults (v2)
+**/node_modules/
+**/.npm/
+**/.pnpm-store/
+**/.yarn/
+**/.cache/
+**/bower_components/
+
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+
+**/.gradle/
+**/.m2/
+**/.nuget/
+**/.cargo/
+**/.stack-work/
+**/.ccache/
+
+**/.idea/
+**/.vscode/
+**/.bundle/
+**/.gem/
+
+# Virtual environments
+**/.venv/
+**/venv/
+
+# Common temp/junk files
+**/*.swp
+**/*~
+**/*.tmp
+**/*.temp
+**/*.bak
