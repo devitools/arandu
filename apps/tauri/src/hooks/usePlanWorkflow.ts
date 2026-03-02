@@ -28,6 +28,7 @@ interface UsePlanWorkflowParams {
 
 export function usePlanWorkflow({
   workspaceId,
+  activeSessionId,
   acpSessionId,
   localSessionId,
   initialPhase,
@@ -55,6 +56,8 @@ export function usePlanWorkflow({
   sendPromptRef.current = sendPrompt;
   const setModeRef = useRef(setMode);
   setModeRef.current = setMode;
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
 
   useEffect(() => {
     if (!agentPlanFilePath) return;
@@ -100,7 +103,7 @@ export function usePlanWorkflow({
 
   const approvePlan = useCallback(
     async (reviewMarkdown?: string) => {
-      if (!acpSessionId) return;
+      if (!acpSessionId && !activeSessionIdRef.current) return;
 
       const agentMode = findModeBySlug(availableModesRef.current, "agent");
       if (agentMode) {
@@ -121,7 +124,7 @@ export function usePlanWorkflow({
 
       await sendPromptRef.current(prompt);
     },
-    [workspaceId, acpSessionId, localSessionId]
+    [workspaceId, acpSessionId, activeSessionId, localSessionId]
   );
 
   const requestChanges = useCallback(
