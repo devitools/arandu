@@ -71,7 +71,11 @@ export function useAcpConnection(
   }, [workspaceId]);
 
   const connect = useCallback(async () => {
-    if (connectedRef.current || connectionStatus === "connecting") return;
+    if (
+      connectedRef.current ||
+      connectionStatus === "connecting" ||
+      connectionStatus === "reconnecting"
+    ) return;
     setConnectionStatus("connecting");
     setConnectionError(null);
     try {

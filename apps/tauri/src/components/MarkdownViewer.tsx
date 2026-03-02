@@ -272,7 +272,11 @@ export function MarkdownViewer({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setReviewOpen((v) => !v)}
+            onClick={() => {
+              const next = !reviewOpen;
+              setReviewOpen(next);
+              review.setIsPanelOpen(next);
+            }}
             className="h-8 w-8 relative"
             title={t("review.togglePanel")}
           >

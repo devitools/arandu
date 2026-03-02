@@ -50,6 +50,7 @@ fn render_markdown(content: String) -> String {
     options.extension.tasklist = true;
     options.extension.strikethrough = true;
     options.extension.autolink = true;
+    options.render.escape = true;
     markdown_to_html(&content, &options)
 }
 
