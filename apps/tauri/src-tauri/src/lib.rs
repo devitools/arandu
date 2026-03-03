@@ -370,7 +370,10 @@ async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) 
 
     let platform = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
-    let gh_token_set = std::env::var("GH_TOKEN").is_ok()
+    let gh_token_set = std::env::var("GH_TOKEN")
+        .ok()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
         || gh_token
             .as_deref()
             .map(|s| !s.trim().is_empty())
@@ -383,6 +386,7 @@ async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) 
     let version_result = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         tokio::process::Command::new(&binary)
+            .kill_on_drop(true)
             .arg("--version")
             .output(),
     )

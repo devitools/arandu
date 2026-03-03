@@ -45,11 +45,9 @@ export function useAcpConnection(
 
       const { status } = event.payload;
       setConnectionStatus(status);
+      connectedRef.current = status === "connected";
       if (status === "connected") {
-        connectedRef.current = true;
         setConnectionError(null);
-      } else if (status === "disconnected") {
-        connectedRef.current = false;
       }
     }).then((fn: () => void) => {
       if (cancelled) fn();
@@ -95,7 +93,17 @@ export function useAcpConnection(
         binaryPath,
         ghToken,
       });
-      // Status will be updated via acp:connection-status event from Rust
+      // Fallback sync in case initial status event was emitted before listener attached
+      try {
+        const health = await window.__TAURI__.core.invoke<string>(
+          "acp_check_health",
+          { workspaceId }
+        );
+        connectedRef.current = health === "connected";
+        setConnectionStatus(health as AcpConnectionStatus);
+      } catch {
+        // ignore; event stream remains source of truth
+      }
     } catch (e) {
       setConnectionError(String(e));
       setConnectionStatus("disconnected");
