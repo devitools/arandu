@@ -31,6 +31,11 @@ export function useAcpConnection(
 
   // Listen to Rust-side connection status events
   useEffect(() => {
+    // Reset state immediately when workspaceId changes to avoid stale UI
+    connectedRef.current = false;
+    setConnectionStatus("idle");
+    setConnectionError(null);
+
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 

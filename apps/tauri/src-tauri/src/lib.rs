@@ -360,7 +360,10 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
 #[tauri::command]
 async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) -> DiagnosticsResult {
     let binary = binary_path
-        .filter(|s| !s.trim().is_empty())
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
         .unwrap_or_else(|| {
             std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string())
         });
