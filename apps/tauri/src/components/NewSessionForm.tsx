@@ -41,7 +41,7 @@ export function NewSessionForm({ open, onOpenChange, onSubmit, isLoading }: NewS
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="sm:max-w-[760px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{t("sessions.newSession")}</DialogTitle>
@@ -71,7 +71,7 @@ export function NewSessionForm({ open, onOpenChange, onSubmit, isLoading }: NewS
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder={t("sessions.formPromptPlaceholder")}
                 className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md outline-none focus:ring-2 focus:ring-ring font-mono resize-y"
-                rows={8}
+                rows={20}
                 disabled={isLoading}
               />
             </div>

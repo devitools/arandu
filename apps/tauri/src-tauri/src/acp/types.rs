@@ -137,3 +137,20 @@ pub struct SessionUpdateEvent {
     pub update_type: String,
     pub payload: serde_json::Value,
 }
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionStatusEvent {
+    pub workspace_id: String,
+    pub status: String, // "connecting" | "connected" | "disconnected" | "reconnecting"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // stored for future reconnect support
+pub struct ConnectionConfig {
+    pub binary: String,
+    pub cwd: String,
+    pub gh_token: Option<String>,
+}

@@ -8,7 +8,7 @@
     "tryAgain": "Tentar Novamente"
   },
   "home": {
-    "tagline": "Companheiro inteligente de desenvolvimento",
+    "tagline": "Seu parceiro inteligente no desenvolvimento de software",
     "openDirectory": "Abrir Área de Trabalho",
     "openDirectoryDescription": "Iniciar uma sessão de workspace",
     "openFile": "Abrir Arquivo",
@@ -21,7 +21,7 @@
     "emptyState": "Inicie uma conversa",
     "you": "Você",
     "assistant": "Assistente",
-    "placeholder": "Digite uma mensagem...",
+    "placeholder": "Passe orientações para o agente...",
     "send": "Enviar"
   },
   "workspace": {
@@ -147,7 +147,30 @@
     "cliInstalling": "Instalando...",
     "cliSuccess": "Instalado com sucesso em {{path}}",
     "cliError": "Falha na instalação: {{error}}",
+    "diagnostics": "Diagnóstico",
     "cliHint": "Caminhos de usuário (~/…) instalam sem senha. Caminhos de sistema podem exigir acesso de administrador."
+  },
+  "diagnostics": {
+    "tab": "Diagnóstico",
+    "run": "Executar Diagnóstico",
+    "running": "Executando...",
+    "copy": "Copiar Relatório",
+    "copied": "Copiado!",
+    "hint": "Clique em 'Executar Diagnóstico' para verificar o ambiente e identificar problemas de conexão.",
+    "platform": "Plataforma",
+    "binary": "Binário Copilot",
+    "version": "Versão",
+    "ghToken": "GH Token",
+    "tokenSet": "Configurado (GH_TOKEN)",
+    "tokenNotSet": "Não configurado — conexão pode falhar em produção",
+    "notSet": "Não definido",
+    "notAvailable": "Não disponível",
+    "acpConnection": "Conexão ACP",
+    "failed": "falhou",
+    "acpCommand": "Comando ACP",
+    "acpStderr": "ACP Stderr",
+    "home": "Home",
+    "path": "PATH"
   },
   "tray": {
     "show": "Mostrar Janela",

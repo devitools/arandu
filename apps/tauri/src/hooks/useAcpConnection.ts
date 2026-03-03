@@ -1,10 +1,18 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import type { AcpConnectionStatusEvent } from "@/types/acp";
+
+export type AcpConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "reconnecting";
 
 interface UseAcpConnectionReturn {
   isConnected: boolean;
   isConnecting: boolean;
   connectionError: string | null;
+  connectionStatus: AcpConnectionStatus;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
 }
@@ -13,51 +21,110 @@ export function useAcpConnection(
   workspaceId: string,
   workspacePath: string
 ): UseAcpConnectionReturn {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] =
+    useState<AcpConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const connectedRef = useRef(false);
 
+  const isConnected = connectionStatus === "connected";
+  const isConnecting = connectionStatus === "connecting";
+
+  // Listen to Rust-side connection status events
+  useEffect(() => {
+    // Reset state immediately when workspaceId changes to avoid stale UI
+    connectedRef.current = false;
+    setConnectionStatus("idle");
+    setConnectionError(null);
+
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    window.__TAURI__.event.listen<AcpConnectionStatusEvent>("acp:connection-status", (event: { payload: AcpConnectionStatusEvent }) => {
+      if (cancelled) return;
+      if (event.payload.workspaceId !== workspaceId) return;
+
+      const { status } = event.payload;
+      setConnectionStatus(status);
+      connectedRef.current = status === "connected";
+      if (status === "connected") {
+        setConnectionError(null);
+      }
+    }).then((fn: () => void) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    }).catch((e: unknown) => {
+      if (!cancelled) {
+        setConnectionError(String(e));
+        setConnectionStatus("disconnected");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [workspaceId]);
+
+  // Check health when the window regains visibility (e.g., unminimize)
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden && connectedRef.current) {
+        window.__TAURI__.core.invoke("acp_check_health", { workspaceId }).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [workspaceId]);
+
   const connect = useCallback(async () => {
-    if (connectedRef.current || isConnecting) return;
-    setIsConnecting(true);
+    if (
+      connectedRef.current ||
+      connectionStatus === "connecting" ||
+      connectionStatus === "reconnecting"
+    ) return;
+    setConnectionStatus("connecting");
     setConnectionError(null);
     try {
       const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
       const ghToken = localStorage.getItem("arandu-gh-token") || undefined;
-      await invoke("acp_connect", {
+      await window.__TAURI__.core.invoke("acp_connect", {
         workspaceId,
         cwd: workspacePath,
         binaryPath,
         ghToken,
       });
-      connectedRef.current = true;
-      setIsConnected(true);
+      // Fallback sync in case initial status event was emitted before listener attached
+      try {
+        const health = await window.__TAURI__.core.invoke<string>(
+          "acp_check_health",
+          { workspaceId }
+        );
+        connectedRef.current = health === "connected";
+        setConnectionStatus(health as AcpConnectionStatus);
+      } catch {
+        // ignore; event stream remains source of truth
+      }
     } catch (e) {
       setConnectionError(String(e));
-    } finally {
-      setIsConnecting(false);
+      setConnectionStatus("disconnected");
     }
-  }, [workspaceId, workspacePath, isConnecting]);
+  }, [workspaceId, workspacePath, connectionStatus]);
 
   const disconnect = useCallback(async () => {
-    if (!connectedRef.current) return;
     try {
-      await invoke("acp_disconnect", { workspaceId });
+      await window.__TAURI__.core.invoke("acp_disconnect", { workspaceId });
     } catch {
       // ignore disconnect errors
     } finally {
       connectedRef.current = false;
-      setIsConnected(false);
+      setConnectionStatus("idle");
     }
   }, [workspaceId]);
 
   useEffect(() => {
     return () => {
-      if (connectedRef.current) {
-        invoke("acp_disconnect", { workspaceId }).catch(() => {});
-        connectedRef.current = false;
-      }
+      window.__TAURI__.core.invoke("acp_disconnect", { workspaceId }).catch(() => {});
+      connectedRef.current = false;
     };
   }, [workspaceId]);
 
@@ -65,6 +132,7 @@ export function useAcpConnection(
     isConnected,
     isConnecting,
     connectionError,
+    connectionStatus,
     connect,
     disconnect,
   };

@@ -50,6 +50,7 @@ fn render_markdown(content: String) -> String {
     options.extension.tasklist = true;
     options.extension.strikethrough = true;
     options.extension.autolink = true;
+    options.render.escape = true;
     markdown_to_html(&content, &options)
 }
 
@@ -233,6 +234,206 @@ fn dismiss_cli_prompt(app: tauri::AppHandle) {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = app;
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DiagnosticsResult {
+    platform: String,
+    arch: String,
+    copilot_binary_used: String,
+    copilot_binary_found: bool,
+    copilot_version: Option<String>,
+    copilot_version_error: Option<String>,
+    gh_token_set: bool,
+    path_env: String,
+    home_env: String,
+    acp_ok: bool,
+    acp_elapsed_ms: Option<u64>,
+    acp_error: Option<String>,
+    acp_command: Option<String>,
+    acp_stderr: Option<String>,
+}
+
+async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Option<u64>, Option<String>, String, Option<String>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let timeout = std::time::Duration::from_secs(10);
+    let start = std::time::Instant::now();
+
+    let command_str = format!("{} --acp --stdio", binary);
+
+    let mut cmd = tokio::process::Command::new(binary);
+    cmd.args(["--acp", "--stdio"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    if let Some(token) = gh_token.filter(|s| !s.trim().is_empty()) {
+        cmd.env("GH_TOKEN", token.trim());
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return (false, None, Some(format!("spawn failed: {}", e)), command_str, None),
+    };
+
+    let mut stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => return (false, None, Some("failed to capture stdin".to_string()), command_str, None),
+    };
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => return (false, None, Some("failed to capture stdout".to_string()), command_str, None),
+    };
+    let stderr = child.stderr.take();
+
+    let init_msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}"# .to_string() + "\n";
+
+    if let Err(e) = stdin.write_all(init_msg.as_bytes()).await {
+        return (false, None, Some(format!("write failed: {}", e)), command_str, None);
+    }
+    let _ = stdin.flush().await;
+
+    // Collect stderr in background
+    let stderr_task = tokio::spawn(async move {
+        if let Some(s) = stderr {
+            let mut reader = BufReader::new(s);
+            let mut buf = String::new();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                async {
+                    loop {
+                        let mut line = String::new();
+                        match reader.read_line(&mut line).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(_) => buf.push_str(&line),
+                        }
+                    }
+                }
+            ).await;
+            if buf.is_empty() { None } else { Some(buf.trim().to_string()) }
+        } else {
+            None
+        }
+    });
+
+    let read_future = async {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let line = line.trim().to_string();
+            if line.is_empty() { continue; }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if v.get("id").and_then(|i| i.as_u64()) == Some(1) {
+                    if v.get("error").is_some() {
+                        let err = v["error"].to_string();
+                        return Err(format!("initialize error: {}", err));
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        Err("connection closed without initialize response".to_string())
+    };
+
+    match tokio::time::timeout(timeout, read_future).await {
+        Ok(Ok(())) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (true, Some(start.elapsed().as_millis() as u64), None, command_str, stderr_out)
+        }
+        Ok(Err(e)) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (false, Some(start.elapsed().as_millis() as u64), Some(e), command_str, stderr_out)
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (false, Some(start.elapsed().as_millis() as u64), Some("timeout after 10s — binary may be waiting for auth or network".to_string()), command_str, stderr_out)
+        }
+    }
+}
+
+#[tauri::command]
+async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) -> DiagnosticsResult {
+    let binary = binary_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string())
+        });
+
+    let platform = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let gh_token_set = std::env::var("GH_TOKEN")
+        .ok()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+        || gh_token
+            .as_deref()
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    let home_env = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+
+    let version_result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(&binary)
+            .kill_on_drop(true)
+            .arg("--version")
+            .output(),
+    )
+    .await;
+
+    let (copilot_binary_found, copilot_version, copilot_version_error) = match version_result {
+        Ok(Ok(output)) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (true, Some(version), None)
+        }
+        Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let msg = if !stderr.is_empty() { stderr } else { stdout };
+            (
+                true,
+                None,
+                Some(format!("exit {:?}: {}", output.status.code(), msg)),
+            )
+        }
+        Ok(Err(e)) => (false, None, Some(format!("spawn failed: {}", e))),
+        Err(_) => (true, None, Some("timeout after 5s".to_string())),
+    };
+
+    // Only test ACP if the binary is found
+    let (acp_ok, acp_elapsed_ms, acp_error, acp_command, acp_stderr) = if copilot_binary_found {
+        let token_ref = gh_token.as_deref();
+        test_acp_connection(&binary, token_ref).await
+    } else {
+        (false, None, Some("binary not found — skipping ACP test".to_string()), format!("{} --acp --stdio", binary), None)
+    };
+
+    DiagnosticsResult {
+        platform,
+        arch,
+        copilot_binary_used: binary,
+        copilot_binary_found,
+        copilot_version,
+        copilot_version_error,
+        gh_token_set,
+        path_env,
+        home_env,
+        acp_ok,
+        acp_elapsed_ms,
+        acp_error,
+        acp_command: Some(acp_command),
+        acp_stderr,
     }
 }
 
@@ -533,6 +734,11 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_denylist(&["whisper", "settings"])
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                    | tauri_plugin_window_state::StateFlags::POSITION
+                    | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                )
                 .build()
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -585,13 +791,21 @@ pub fn run() {
             setup_macos_menu(app)?;
 
             if let Some(main_window) = app.get_webview_window("main") {
+                // Always start hidden — frontend calls show() after React mounts.
+                // This overrides any visible=true that window_state may have restored
+                // from a previous session saved before this fix was applied.
+                let _ = main_window.hide();
+
                 let w = main_window.clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        use tauri_plugin_window_state::AppHandleExt;
-                        let _ = w.app_handle().save_window_state(tauri_plugin_window_state::StateFlags::all());
+                        use tauri_plugin_window_state::{AppHandleExt, StateFlags};
                         api.prevent_close();
                         let _ = w.hide();
+                        // Save size/position AFTER hiding so VISIBLE is never stored as true.
+                        // We always control visibility manually from the frontend.
+                        let flags = StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED;
+                        let _ = w.app_handle().save_window_state(flags);
                     }
                 });
             }
@@ -759,6 +973,7 @@ pub fn run() {
             acp::commands::acp_send_prompt,
             acp::commands::acp_set_mode,
             acp::commands::acp_cancel,
+            acp::commands::acp_check_health,
             sessions::count_workspace_sessions,
             sessions::session_list,
             sessions::session_create,
@@ -771,6 +986,7 @@ pub fn run() {
             plan_file::plan_write,
             plan_file::plan_read,
             plan_file::plan_path,
+            run_diagnostics,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

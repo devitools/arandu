@@ -5,9 +5,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { WhisperSettings } from "@/components/settings/WhisperSettings";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { CliInstallSettings } from "@/components/settings/CliInstallSettings";
+import { DiagnosticsSettings } from "@/components/settings/DiagnosticsSettings";
 import { Toaster } from "@/components/ui/sonner";
 import { useTranslation } from "react-i18next";
-import { Mic, Settings, Terminal } from "lucide-react";
+import { Activity, Mic, Settings, Terminal } from "lucide-react";
 
 const { getCurrentWindow } = window.__TAURI__.window;
 const { listen } = window.__TAURI__.event;
@@ -59,6 +60,10 @@ export function SettingsApp() {
                   <Terminal className="h-3.5 w-3.5" />
                   {t("settings.cli")}
                 </TabsTrigger>
+                <TabsTrigger value="diagnostics" className="gap-1.5">
+                  <Activity className="h-3.5 w-3.5" />
+                  {t("settings.diagnostics")}
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="whisper">
                 <WhisperSettings />
@@ -68,6 +73,9 @@ export function SettingsApp() {
               </TabsContent>
               <TabsContent value="cli">
                 <CliInstallSettings />
+              </TabsContent>
+              <TabsContent value="diagnostics">
+                <DiagnosticsSettings />
               </TabsContent>
             </Tabs>
           </div>

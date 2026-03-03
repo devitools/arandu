@@ -38,3 +38,9 @@ export interface AcpMessage {
   toolTitle?: string;
   toolStatus?: string;
 }
+
+export interface AcpConnectionStatusEvent {
+  workspaceId: string;
+  status: "connecting" | "connected" | "disconnected" | "reconnecting";
+  attempt?: number;
+}

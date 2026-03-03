@@ -62,7 +62,7 @@ export function CliInstallSettings() {
       {/* Status */}
       <div className="flex items-center gap-2">
         {status?.installed ? (
-          <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+          <CheckCircle className="h-4 w-4 text-success shrink-0" />
         ) : (
           <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
         )}
@@ -114,7 +114,7 @@ export function CliInstallSettings() {
 
       {/* Feedback */}
       {result && (
-        <p className={`text-xs ${result.success ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
+        <p className={`text-xs ${result.success ? "text-success" : "text-destructive"}`}>
           {result.success
             ? t("settings.cliSuccess", { path: result.path })
             : t("settings.cliError", { error: result.error })}
