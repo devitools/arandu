@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/lib/theme";
 import { AppProvider, useApp, ANIMATION_DURATION } from "@/contexts/AppContext";
 import { TopBar } from "@/components/TopBar";
 import { HomeScreen } from "@/components/HomeScreen";
@@ -226,7 +226,13 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="arandu-theme">
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        storageKey="arandu-theme"
+        disableTransitionOnChange
+      >
         <TooltipProvider>
           <AppProvider>
             <AppContent />

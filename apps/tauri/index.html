@@ -1,10 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-window="main">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arandu</title>
+    <script>
+      (() => {
+        try {
+          const rawTheme = localStorage.getItem("arandu-theme");
+          const theme = rawTheme === "light" || rawTheme === "dark" || rawTheme === "system"
+            ? rawTheme
+            : "system";
+          const resolvedTheme =
+            theme === "system"
+              ? typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : theme;
+          const root = document.documentElement;
+          root.classList.toggle("dark", resolvedTheme === "dark");
+          root.style.colorScheme = resolvedTheme;
+          root.dataset.theme = resolvedTheme;
+        } catch {
+          // Ignore early theme bootstrap failures and let React apply the fallback.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

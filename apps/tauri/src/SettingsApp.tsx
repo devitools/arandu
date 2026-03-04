@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/lib/theme";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WhisperSettings } from "@/components/settings/WhisperSettings";
@@ -41,7 +41,13 @@ export function SettingsApp() {
   }, []);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="arandu-theme">
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      storageKey="arandu-theme"
+      disableTransitionOnChange
+    >
       <TooltipProvider>
         <div className="h-screen overflow-hidden bg-background text-foreground flex flex-col">
           <div className="p-6 flex-1 overflow-y-auto">
