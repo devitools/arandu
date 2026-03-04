@@ -72,7 +72,7 @@ describe('ChatPanel', () => {
 
     render(<ChatPanel messages={[]} onSendMessage={onSendMessage} />);
 
-    const textarea = screen.getByPlaceholderText(/Digite uma mensagem/i);
+    const textarea = screen.getByPlaceholderText(/Passe orientações para o agente/i);
     await user.type(textarea, 'Test message');
     await user.click(screen.getByRole('button'));
 
@@ -84,7 +84,7 @@ describe('ChatPanel', () => {
 
     render(<ChatPanel messages={[]} onSendMessage={vi.fn()} />);
 
-    const textarea = screen.getByPlaceholderText(/Digite uma mensagem/i) as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/Passe orientações para o agente/i) as HTMLTextAreaElement;
     await user.type(textarea, 'Test message');
     await user.click(screen.getByRole('button'));
 
@@ -97,7 +97,7 @@ describe('ChatPanel', () => {
 
     render(<ChatPanel messages={[]} onSendMessage={onSendMessage} />);
 
-    const textarea = screen.getByPlaceholderText(/Digite uma mensagem/i);
+    const textarea = screen.getByPlaceholderText(/Passe orientações para o agente/i);
     await user.type(textarea, 'Test message{Enter}');
 
     expect(onSendMessage).toHaveBeenCalledWith('Test message');

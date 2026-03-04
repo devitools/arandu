@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/lib/theme";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -347,7 +347,13 @@ function WhisperContent() {
 
 export function WhisperApp() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="arandu-theme">
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      storageKey="arandu-theme"
+      disableTransitionOnChange
+    >
       <WhisperContent />
     </ThemeProvider>
   );

@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MicButton } from "@/components/MicButton";
 import { Monitor, Moon, Settings, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { useTranslation } from "react-i18next";
 
 const { invoke } = window.__TAURI__.core;

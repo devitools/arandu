@@ -13,6 +13,6 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Arandu')).toBeInTheDocument();
     expect(screen.getByText('Abrir Arquivo')).toBeInTheDocument();
-    expect(screen.getByText('Abrir Diretório')).toBeInTheDocument();
+    expect(screen.getByText('Abrir Área de Trabalho')).toBeInTheDocument();
   });
 });

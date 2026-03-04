@@ -17,6 +17,7 @@ globalThis.__TAURI__ = {
     open: vi.fn(),
   },
   event: {
+    emit: vi.fn(() => Promise.resolve()),
     listen: vi.fn(() => Promise.resolve(() => {})),
   },
 };

@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from '@/lib/theme';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { TopBar } from '@/components/TopBar';
 
 describe('TopBar', () => {
   it('renders logo and app name', () => {
     render(
       <ThemeProvider>
-        <TopBar />
+        <TooltipProvider>
+          <TopBar />
+        </TooltipProvider>
       </ThemeProvider>
     );
 
@@ -18,7 +21,9 @@ describe('TopBar', () => {
   it('renders theme toggle button', () => {
     render(
       <ThemeProvider>
-        <TopBar />
+        <TooltipProvider>
+          <TopBar />
+        </TooltipProvider>
       </ThemeProvider>
     );
 
