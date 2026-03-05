@@ -76,6 +76,19 @@ export function MarkdownViewer({
     });
   }, []);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === OUTLINE_PINNED_KEY && event.newValue != null) {
+        setOutlinePinned(event.newValue === "true");
+      }
+      if (event.key === REVIEW_PINNED_KEY && event.newValue != null) {
+        setReviewPinned(event.newValue === "true");
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const review = useComments();
   const prevPhaseRef = useRef<PlanPhase | undefined>(phase);
 

@@ -141,10 +141,15 @@ pub fn save_comments(
 }
 
 pub fn delete_comments_for_file(conn: &Connection, file_path: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM comments WHERE file_path = ?1", params![file_path])
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Transaction error: {}", e))?;
+    tx.execute("DELETE FROM comments WHERE file_path = ?1", params![file_path])
         .map_err(|e| format!("Delete comments error: {}", e))?;
-    conn.execute("DELETE FROM file_hashes WHERE file_path = ?1", params![file_path])
+    tx.execute("DELETE FROM file_hashes WHERE file_path = ?1", params![file_path])
         .map_err(|e| format!("Delete file_hashes error: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("Commit error: {}", e))?;
     Ok(())
 }
 

@@ -83,7 +83,7 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
                 <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => onForget(workspace.id)}
+                  onClick={() => { void onForget(workspace.id).catch(console.error); }}
                 >
                   {t(`${prefix}.forgetAction`)}
                 </AlertDialogAction>

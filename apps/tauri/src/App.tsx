@@ -80,7 +80,9 @@ function AppContent() {
     setTransitionEnabled(true);
     setAnimPhase("expanding");
 
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
     animTimeoutRef.current = window.setTimeout(() => {
+      animTimeoutRef.current = null;
       setAnimPhase("settled");
       setFlipTransform("");
       setTransitionEnabled(false);
@@ -115,7 +117,9 @@ function AppContent() {
     setFlipTransform(calcInverseTransform(rect));
     setAnimPhase("minimizing");
 
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
     animTimeoutRef.current = window.setTimeout(() => {
+      animTimeoutRef.current = null;
       card.style.opacity = "";
       setAnimPhase("idle");
       setFlipTransform("");
@@ -125,7 +129,7 @@ function AppContent() {
   }, [isMinimizing, expandedWorkspaceId, calcInverseTransform, finishMinimize]);
 
   useEffect(() => () => {
-    if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
   }, []);
 
   useEffect(() => {

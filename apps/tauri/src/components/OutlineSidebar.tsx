@@ -67,12 +67,12 @@ export function OutlineSidebar({ headings, pinned, onTogglePin, onClose }: Outli
           </div>
           <div className="flex items-center gap-1">
             {onTogglePin && (
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')} aria-label={t(pinned ? 'outline.unpin' : 'outline.pin')}>
                 {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
               </Button>
             )}
             {onClose && (
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}>
                 <X className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -93,12 +93,12 @@ export function OutlineSidebar({ headings, pinned, onTogglePin, onClose }: Outli
           </div>
           <div className="flex items-center gap-1">
             {onTogglePin && (
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')} aria-label={t(pinned ? 'outline.unpin' : 'outline.pin')}>
                 {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
               </Button>
             )}
             {onClose && (
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}>
                 <X className="h-3.5 w-3.5" />
               </Button>
             )}
