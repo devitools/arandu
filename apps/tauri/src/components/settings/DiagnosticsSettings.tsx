@@ -21,6 +21,8 @@ interface DiagnosticsResult {
   acp_error: string | null;
   acp_command: string | null;
   acp_stderr: string | null;
+  auth_status: string | null;
+  auth_method: string | null;
 }
 
 function StatusIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
@@ -48,16 +50,19 @@ export function DiagnosticsSettings() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const provider = localStorage.getItem("arandu-provider") ?? "copilot";
   const copilotPath = localStorage.getItem("arandu-copilot-path") ?? null;
   const ghToken = localStorage.getItem("arandu-gh-token") ?? null;
+  const claudePath = localStorage.getItem("arandu-claude-path") ?? null;
 
   async function runDiagnostics() {
     setLoading(true);
     setError(null);
     try {
       const data = await invoke<DiagnosticsResult>("run_diagnostics", {
-        binaryPath: copilotPath,
-        ghToken: ghToken,
+        provider,
+        binaryPath: provider === "copilot" ? copilotPath : claudePath,
+        ghToken: provider === "copilot" ? ghToken : null,
       });
       setResult(data);
     } catch (e) {
@@ -70,15 +75,18 @@ export function DiagnosticsSettings() {
   async function copyReport() {
     if (!result) return;
     const lines = [
+      `provider: ${provider}`,
       `platform: ${result.platform} / ${result.arch}`,
       `home: ${result.home_env}`,
-      `copilot binary: ${result.copilot_binary_used}`,
+      `binary: ${result.copilot_binary_used}`,
       `binary found: ${result.copilot_binary_found}`,
       `version: ${result.copilot_version ?? result.copilot_version_error ?? "n/a"}`,
-      `gh_token set: ${result.gh_token_set}`,
-      `acp connection: ${result.acp_ok ? `ok (${result.acp_elapsed_ms}ms)` : result.acp_error ?? "failed"}`,
-      result.acp_command ? `acp command: ${result.acp_command}` : null,
-      result.acp_stderr ? `acp stderr: ${result.acp_stderr}` : null,
+      result.auth_status ? `auth status: ${result.auth_status}` : null,
+      result.auth_method ? `auth method: ${result.auth_method}` : null,
+      provider === "copilot" ? `gh_token set: ${result.gh_token_set}` : null,
+      `connection: ${result.acp_ok ? `ok (${result.acp_elapsed_ms}ms)` : result.acp_error ?? "failed"}`,
+      result.acp_command ? `command: ${result.acp_command}` : null,
+      result.acp_stderr ? `stderr: ${result.acp_stderr}` : null,
       `PATH: ${result.path_env}`,
     ];
     try {
@@ -93,7 +101,7 @@ export function DiagnosticsSettings() {
   const versionOk = !!result?.copilot_version;
   const versionWarn = result?.copilot_binary_found && !result.copilot_version;
 
-  const acpValue = result
+  const connectionValue = result
     ? result.acp_ok
       ? `ok — ${result.acp_elapsed_ms}ms`
       : result.acp_error ?? t("diagnostics.failed")
@@ -144,16 +152,32 @@ export function DiagnosticsSettings() {
               t("diagnostics.notAvailable")
             }
           />
-          <Row
-            label={t("diagnostics.ghToken")}
-            ok={result.gh_token_set}
-            warn={!result.gh_token_set}
-            value={result.gh_token_set ? t("diagnostics.tokenSet") : t("diagnostics.tokenNotSet")}
-          />
+          {result.auth_status != null && (
+            <Row
+              label={t("diagnostics.authStatus")}
+              ok={result.auth_status === "logged_in"}
+              value={result.auth_status}
+            />
+          )}
+          {result.auth_method != null && (
+            <Row
+              label={t("diagnostics.authMethod")}
+              ok
+              value={result.auth_method}
+            />
+          )}
+          {provider === "copilot" && (
+            <Row
+              label={t("diagnostics.ghToken")}
+              ok={result.gh_token_set}
+              warn={!result.gh_token_set}
+              value={result.gh_token_set ? t("diagnostics.tokenSet") : t("diagnostics.tokenNotSet")}
+            />
+          )}
           <Row
             label={t("diagnostics.acpConnection")}
             ok={result.acp_ok}
-            value={acpValue}
+            value={connectionValue}
           />
           {result.acp_command && (
             <Row

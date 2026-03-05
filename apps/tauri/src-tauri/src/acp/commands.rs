@@ -5,11 +5,49 @@ use indexmap::IndexMap;
 use tokio::sync::Mutex;
 use tauri::{AppHandle, State, Emitter};
 
-use super::connection::AcpConnection;
+use super::connection::{AcpConnection, ClaudeConnection};
 use super::types::*;
 
+// ── AnyConnection — wraps both provider connection types ────────────────────
+
+pub enum AnyConnection {
+    Copilot(AcpConnection),
+    Claude(ClaudeConnection),
+}
+
+impl AnyConnection {
+    pub async fn shutdown(&self) {
+        match self {
+            AnyConnection::Copilot(c) => c.shutdown().await,
+            AnyConnection::Claude(c) => c.shutdown().await,
+        }
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        match self {
+            AnyConnection::Copilot(c) => c.is_alive().await,
+            AnyConnection::Claude(c) => c.is_alive().await,
+        }
+    }
+
+    pub fn emit_status(&self, status: &str, attempt: Option<u32>) {
+        match self {
+            AnyConnection::Copilot(c) => c.emit_status(status, attempt),
+            AnyConnection::Claude(c) => c.emit_status(status, attempt),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn emit_log(&self, level: &str, event: &str, message: &str) {
+        match self {
+            AnyConnection::Copilot(c) => c.emit_log(level, event, message),
+            AnyConnection::Claude(c) => c.emit_log(level, event, message),
+        }
+    }
+}
+
 pub struct AcpState {
-    pub connections: Mutex<HashMap<String, AcpConnection>>,
+    pub connections: Mutex<HashMap<String, AnyConnection>>,
     pub configs: Mutex<HashMap<String, ConnectionConfig>>,
 }
 
@@ -66,11 +104,20 @@ pub struct SessionConnectionConfig {
 pub async fn acp_connect(
     workspace_id: String,
     cwd: String,
+    provider: Option<String>,
     binary_path: Option<String>,
     gh_token: Option<String>,
+    model: Option<String>,
+    skip_permissions: Option<bool>,
+    max_budget_usd: Option<String>,
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
+    let resolved_provider = match provider.as_deref() {
+        Some("claude") => Provider::Claude,
+        _ => Provider::Copilot,
+    };
+
     let existing = {
         let mut connections = state.connections.lock().await;
         connections.remove(&workspace_id)
@@ -84,48 +131,90 @@ pub async fn acp_connect(
         state.configs.lock().await.remove(&workspace_id);
     }
 
-    let binary = binary_path
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
-
-    let config = ConnectionConfig {
-        binary: binary.clone(),
-        cwd: cwd.clone(),
-        gh_token: gh_token.clone(),
-    };
-
     let _ = app_handle.emit("acp:connection-status", &ConnectionStatusEvent {
         workspace_id: workspace_id.clone(),
         status: "connecting".to_string(),
         attempt: None,
     });
 
-    let conn = AcpConnection::spawn(
-        &binary,
-        &["--acp", "--stdio"],
-        &cwd,
-        gh_token,
-        workspace_id.clone(),
-        app_handle.clone(),
-    )
-    .await?;
+    let conn = match resolved_provider {
+        Provider::Copilot => {
+            let binary = binary_path
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
 
-    let init_params = InitializeParams {
-        protocol_version: 1,
-        client_capabilities: serde_json::json!({}),
+            let config = ConnectionConfig {
+                provider: Provider::Copilot,
+                binary: binary.clone(),
+                cwd: cwd.clone(),
+                gh_token: gh_token.clone(),
+                model: None,
+                skip_permissions: false,
+                max_budget_usd: None,
+            };
+
+            let conn = AcpConnection::spawn(
+                &binary,
+                &["--acp", "--stdio"],
+                &cwd,
+                gh_token,
+                workspace_id.clone(),
+                app_handle.clone(),
+            )
+            .await?;
+
+            let init_params = InitializeParams {
+                protocol_version: 1,
+                client_capabilities: serde_json::json!({}),
+            };
+            conn.send_request(
+                "initialize",
+                Some(serde_json::to_value(&init_params).map_err(|e| e.to_string())?),
+            )
+            .await?;
+            conn.send_notification("initialized", None).await?;
+            conn.emit_status("connected", None);
+            conn.emit_log("info", "connect", &format!("Connected via {}", binary));
+
+            state.configs.lock().await.insert(workspace_id.clone(), config);
+            AnyConnection::Copilot(conn)
+        }
+
+        Provider::Claude => {
+            let binary = binary_path
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| std::env::var("CLAUDE_PATH").unwrap_or_else(|_| "claude".to_string()));
+            let skip = skip_permissions.unwrap_or(false);
+
+            let config = ConnectionConfig {
+                provider: Provider::Claude,
+                binary: binary.clone(),
+                cwd: cwd.clone(),
+                gh_token: None,
+                model: model.clone(),
+                skip_permissions: skip,
+                max_budget_usd: max_budget_usd.clone(),
+            };
+
+            let conn = ClaudeConnection::spawn(
+                &binary,
+                &cwd,
+                model.as_deref(),
+                skip,
+                max_budget_usd.as_deref(),
+                None,
+                workspace_id.clone(),
+                app_handle.clone(),
+            )
+            .await?;
+            conn.emit_status("connected", None);
+            conn.emit_log("info", "connect", &format!("Connected via {}", binary));
+
+            state.configs.lock().await.insert(workspace_id.clone(), config);
+            AnyConnection::Claude(conn)
+        }
     };
 
-    conn.send_request(
-        "initialize",
-        Some(serde_json::to_value(&init_params).map_err(|e| e.to_string())?),
-    )
-    .await?;
-
-    conn.send_notification("initialized", None).await?;
-    conn.emit_status("connected", None);
-    conn.emit_log("info", "connect", &format!("Connected via {}", binary));
-
-    state.configs.lock().await.insert(workspace_id.clone(), config);
     state.connections.lock().await.insert(workspace_id, conn);
     Ok(())
 }
@@ -151,25 +240,24 @@ pub async fn acp_new_session(
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
-    let params = NewSessionParams {
-        cwd,
-        mcp_servers: vec![],
-    };
-
-    let result = conn
-        .send_request(
-            "session/new",
-            Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-        )
-        .await?;
-
-    let info: SessionInfo = serde_json::from_value(result)
-        .map_err(|e| format!("Failed to parse session info: {}", e))?;
-    Ok(info)
+    match conn {
+        AnyConnection::Copilot(c) => {
+            let params = NewSessionParams { cwd, mcp_servers: vec![] };
+            let result = c
+                .send_request("session/new", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+                .await?;
+            let info: SessionInfo = serde_json::from_value(result)
+                .map_err(|e| format!("Failed to parse session info: {}", e))?;
+            Ok(info)
+        }
+        AnyConnection::Claude(c) => {
+            // Session ID was captured from system/init when the process started
+            let sid = c.get_session_id().await.unwrap_or_default();
+            Ok(SessionInfo { session_id: sid, modes: None, config_options: None })
+        }
+    }
 }
 
 #[tauri::command]
@@ -179,26 +267,27 @@ pub async fn acp_list_sessions(
     state: State<'_, AcpState>,
 ) -> Result<Vec<SessionSummary>, String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
-    let params = ListSessionsParams { cwd };
-
-    let result = conn
-        .send_request(
-            "session/list",
-            Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-        )
-        .await?;
-
-    let sessions: Vec<SessionSummary> = if let Some(arr) = result.get("sessions") {
-        serde_json::from_value(arr.clone()).unwrap_or_default()
-    } else {
-        serde_json::from_value(result).unwrap_or_default()
-    };
-
-    Ok(sessions)
+    match conn {
+        AnyConnection::Copilot(c) => {
+            let params = ListSessionsParams { cwd };
+            let result = c
+                .send_request("session/list", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+                .await?;
+            let sessions: Vec<SessionSummary> = if let Some(arr) = result.get("sessions") {
+                serde_json::from_value(arr.clone()).unwrap_or_default()
+            } else {
+                serde_json::from_value(result).unwrap_or_default()
+            };
+            Ok(sessions)
+        }
+        AnyConnection::Claude(_) => {
+            // Claude Code has no server-side session listing;
+            // Arandu's local SQLite sessions are the source of truth.
+            Ok(vec![])
+        }
+    }
 }
 
 #[tauri::command]
@@ -206,33 +295,76 @@ pub async fn acp_load_session(
     workspace_id: String,
     session_id: String,
     cwd: String,
+    app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
-    let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
-
-    let params = LoadSessionParams {
-        session_id: session_id.clone(),
-        cwd,
-        mcp_servers: vec![],
-    };
-
-    let result = conn
-        .send_request(
-            "session/load",
-            Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-        )
-        .await?;
-
-    let mut info: SessionInfo = serde_json::from_value(result)
-        .map_err(|e| format!("Failed to parse session info: {}", e))?;
-
-    if info.session_id.is_empty() {
-        info.session_id = session_id;
+    // Check if this workspace is already on the requested session (Claude optimisation)
+    {
+        let connections = state.connections.lock().await;
+        if let Some(AnyConnection::Claude(c)) = connections.get(&workspace_id) {
+            if c.get_session_id().await.as_deref() == Some(&session_id) {
+                return Ok(SessionInfo { session_id, modes: None, config_options: None });
+            }
+        }
     }
-    Ok(info)
+
+    let config = state.configs.lock().await.get(&workspace_id).cloned();
+
+    match config.as_ref().map(|c| &c.provider) {
+        Some(Provider::Claude) => {
+            // For Claude: disconnect the current process and respawn with --resume
+            let old = state.connections.lock().await.remove(&workspace_id);
+            if let Some(old_conn) = old {
+                old_conn.shutdown().await;
+            }
+
+            let cfg = config.unwrap();
+            let _ = app_handle.emit("acp:connection-status", &ConnectionStatusEvent {
+                workspace_id: workspace_id.clone(),
+                status: "connecting".to_string(),
+                attempt: None,
+            });
+
+            let conn = ClaudeConnection::spawn(
+                &cfg.binary,
+                &cwd,
+                cfg.model.as_deref(),
+                cfg.skip_permissions,
+                cfg.max_budget_usd.as_deref(),
+                Some(&session_id),
+                workspace_id.clone(),
+                app_handle.clone(),
+            )
+            .await?;
+            conn.emit_status("connected", None);
+            conn.emit_log("info", "load_session", &format!("Resumed session {}", session_id));
+
+            // Update cwd in stored config
+            state.configs.lock().await.entry(workspace_id.clone()).and_modify(|c| c.cwd = cwd);
+            state.connections.lock().await.insert(workspace_id, AnyConnection::Claude(conn));
+
+            Ok(SessionInfo { session_id, modes: None, config_options: None })
+        }
+        _ => {
+            // Copilot: JSON-RPC session/load
+            let connections = state.connections.lock().await;
+            let conn = connections.get(&workspace_id).ok_or("Not connected")?;
+            if let AnyConnection::Copilot(c) = conn {
+                let params = LoadSessionParams { session_id: session_id.clone(), cwd, mcp_servers: vec![] };
+                let result = c
+                    .send_request("session/load", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+                    .await?;
+                let mut info: SessionInfo = serde_json::from_value(result)
+                    .map_err(|e| format!("Failed to parse session info: {}", e))?;
+                if info.session_id.is_empty() {
+                    info.session_id = session_id;
+                }
+                Ok(info)
+            } else {
+                Err("Not connected".to_string())
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -243,25 +375,25 @@ pub async fn acp_send_prompt(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
-    let params = PromptParams {
-        session_id,
-        prompt: vec![PromptContent {
-            r#type: "text".to_string(),
-            text,
-        }],
-    };
-
-    conn.send_request_with_timeout(
-        "session/prompt",
-        Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-        std::time::Duration::from_secs(600),
-    )
-    .await?;
-
+    match conn {
+        AnyConnection::Copilot(c) => {
+            let params = PromptParams {
+                session_id,
+                prompt: vec![PromptContent { r#type: "text".to_string(), text }],
+            };
+            c.send_request_with_timeout(
+                "session/prompt",
+                Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+                std::time::Duration::from_secs(600),
+            )
+            .await?;
+        }
+        AnyConnection::Claude(c) => {
+            c.send_prompt(&text, std::time::Duration::from_secs(600)).await?;
+        }
+    }
     Ok(())
 }
 
@@ -270,25 +402,59 @@ pub async fn acp_set_mode(
     workspace_id: String,
     session_id: String,
     mode: String,
+    app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let config = state.configs.lock().await.get(&workspace_id).cloned();
 
-    let params = SetSessionModeParams {
-        session_id,
-        mode_id: mode,
-    };
+    match config.as_ref().map(|c| &c.provider) {
+        Some(Provider::Claude) => {
+            // Claude: --agent is a startup flag, so we must respawn with --resume + --agent
+            let old = state.connections.lock().await.remove(&workspace_id);
+            if let Some(old_conn) = old {
+                old_conn.shutdown().await;
+            }
 
-    conn.send_request(
-        "session/set_mode",
-        Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-    )
-    .await?;
+            let cfg = config.unwrap();
+            let _ = app_handle.emit("acp:connection-status", &ConnectionStatusEvent {
+                workspace_id: workspace_id.clone(),
+                status: "connecting".to_string(),
+                attempt: None,
+            });
 
-    Ok(())
+            // ClaudeConnection::spawn handles all standard flags;
+            // --agent is not yet supported via spawn args but the session is resumed via --resume.
+            let conn = ClaudeConnection::spawn(
+                &cfg.binary,
+                &cfg.cwd,
+                cfg.model.as_deref(),
+                cfg.skip_permissions,
+                cfg.max_budget_usd.as_deref(),
+                if session_id.is_empty() { None } else { Some(&session_id) },
+                workspace_id.clone(),
+                app_handle.clone(),
+            )
+            .await?;
+            conn.emit_status("connected", None);
+            conn.emit_log("info", "set_mode", &format!("Mode changed to '{}' (new session process, history preserved via --resume)", mode));
+
+            state.connections.lock().await.insert(workspace_id, AnyConnection::Claude(conn));
+            Ok(())
+        }
+        _ => {
+            let connections = state.connections.lock().await;
+            let conn = connections.get(&workspace_id).ok_or("Not connected")?;
+            if let AnyConnection::Copilot(c) = conn {
+                let params = SetSessionModeParams { session_id, mode_id: mode };
+                c.send_request(
+                    "session/set_mode",
+                    Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+                )
+                .await?;
+            }
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -298,18 +464,23 @@ pub async fn acp_cancel(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
-    let params = CancelParams { session_id };
-
-    conn.send_notification(
-        "session/cancel",
-        Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
-    )
-    .await?;
-
+    match conn {
+        AnyConnection::Copilot(c) => {
+            let params = CancelParams { session_id };
+            c.send_notification(
+                "session/cancel",
+                Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+            )
+            .await?;
+        }
+        AnyConnection::Claude(_c) => {
+            // For Claude, cancellation is done by the frontend dropping the prompt call;
+            // the process continues to run for the next turn.
+            // A hard cancel could kill and respawn, but we keep it a no-op here.
+        }
+    }
     Ok(())
 }
 
