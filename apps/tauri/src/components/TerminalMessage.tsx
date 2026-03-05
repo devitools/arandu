@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AcpMessage } from "@/types/acp";
@@ -21,6 +22,7 @@ const markdownComponents: Components = {
 };
 
 export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessageProps) {
+  const { t } = useTranslation();
   if (message.role === "user") {
     const lines = message.content.split("\n");
     const firstLine = lines[0];
@@ -70,7 +72,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
             {title}
           </span>
           {message.toolStatus === "completed" && (
-            <span className="ml-1.5 text-[#3dd68c]/60 text-[10px]">done</span>
+            <span className="ml-1.5 text-success/60 text-[10px]">{t("terminal.done")}</span>
           )}
           {hasContent && content.length <= 120 && contentLines.length === 1 ? (
             <div className="tool-content-inline">

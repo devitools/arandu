@@ -242,5 +242,8 @@
     "showResolved": "Mostrar resolvidos",
     "cancel": "Cancelar",
     "submit": "Adicionar Comentário"
+  },
+  "terminal": {
+    "done": "feito"
   }
 }
