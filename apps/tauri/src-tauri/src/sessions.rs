@@ -320,18 +320,25 @@ pub fn forget_workspace_data(
     db: tauri::State<CommentsDb>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-
-    if workspace_type == "directory" {
-        crate::comments::delete_comments_for_workspace(&conn, &workspace_path)?;
-        let session_ids = delete_workspace_sessions(&conn, &workspace_path)?;
-        let app_data = app.path().app_data_dir()
-            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-        for id in &session_ids {
-            let _ = crate::plan_file::delete_plan(&app_data, id);
+    let session_ids = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        match workspace_type.as_str() {
+            "directory" => {
+                crate::comments::delete_comments_for_workspace(&conn, &workspace_path)?;
+                delete_workspace_sessions(&conn, &workspace_path)?
+            }
+            "file" => {
+                crate::comments::delete_comments_for_file(&conn, &workspace_path)?;
+                return Ok(());
+            }
+            other => return Err(format!("Invalid workspace_type: {}", other)),
         }
-    } else {
-        crate::comments::delete_comments_for_file(&conn, &workspace_path)?;
+    };
+
+    let app_data = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    for id in &session_ids {
+        let _ = crate::plan_file::delete_plan(&app_data, id);
     }
 
     Ok(())

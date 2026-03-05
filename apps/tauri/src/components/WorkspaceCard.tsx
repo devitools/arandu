@@ -54,7 +54,7 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
         });
       }}
     >
-      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10">
         {onForget && (
           <AlertDialog>
             <AlertDialogTrigger asChild>

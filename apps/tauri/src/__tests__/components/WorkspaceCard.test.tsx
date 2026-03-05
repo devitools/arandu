@@ -17,7 +17,7 @@ describe('WorkspaceCard', () => {
     workspace: mockWorkspace,
     onExpand: vi.fn(),
     onClose: vi.fn(),
-    onForget: vi.fn(),
+    onForget: vi.fn().mockResolvedValue(undefined),
   };
 
   it('renders workspace information', () => {
@@ -65,7 +65,7 @@ describe('WorkspaceCard', () => {
 
   it('calls onForget after confirmation for directory workspaces', async () => {
     const user = userEvent.setup();
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(undefined);
     const dirWorkspace: Workspace = {
       id: '2',
       type: 'directory',
@@ -87,7 +87,7 @@ describe('WorkspaceCard', () => {
 
   it('shows forget button for file workspaces', async () => {
     const user = userEvent.setup();
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(undefined);
 
     render(<WorkspaceCard {...defaultProps} onForget={onForget} />);
 
