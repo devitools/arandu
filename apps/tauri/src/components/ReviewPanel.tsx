@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CommentCard } from "@/components/CommentCard";
 import { MicButton } from "@/components/MicButton";
 import { blockLabel } from "@/lib/block-utils";
-import { AlertTriangle, ArrowLeft, Check, Copy, Eye, EyeOff, FileText, MessageSquare, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Copy, Eye, EyeOff, FileText, MessageSquare, Pin, PinOff, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ interface ReviewPanelProps {
   selectedBlockIds: string[];
   isStale: boolean;
   unresolvedCount: number;
+  pinned?: boolean;
+  onTogglePin?: () => void;
   onClose: () => void;
   onAddComment: (text: string) => void;
   onResolveComment: (id: string) => void;
@@ -32,6 +34,8 @@ export function ReviewPanel({
   selectedBlockIds,
   isStale,
   unresolvedCount,
+  pinned,
+  onTogglePin,
   onClose,
   onAddComment,
   onResolveComment,
@@ -131,6 +135,17 @@ export function ReviewPanel({
           >
             {hideResolved ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </Button>
+          {onTogglePin && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onTogglePin}
+              title={t(pinned ? "review.unpin" : "review.pin")}
+            >
+              {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

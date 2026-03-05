@@ -21,7 +21,7 @@ function saveWorkspaces(workspaces: Workspace[]) {
   localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(workspaces));
 }
 
-export const ANIMATION_DURATION = 350;
+export const ANIMATION_DURATION = 380;
 
 interface AppContextValue {
   view: 'home' | 'file-expanded' | 'directory-expanded';
@@ -36,6 +36,7 @@ interface AppContextValue {
   expandWorkspace: (id: string, rect?: CardRect) => void;
   minimizeWorkspace: () => void;
   closeWorkspace: (id: string) => void;
+  forgetWorkspace: (id: string) => Promise<void>;
   finishExpand: () => void;
   finishMinimize: () => void;
 }
@@ -134,10 +135,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setExpandedWorkspaceId(id);
     setView(workspace.type === 'file' ? 'file-expanded' : 'directory-expanded');
-
-    setWorkspaces((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, lastAccessed: new Date() } : w))
-    );
   }, [workspaces]);
 
   const finishExpand = useCallback(() => {
@@ -150,15 +147,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const finishMinimize = useCallback(() => {
     setIsMinimizing(false);
+    if (expandedWorkspaceId) {
+      setWorkspaces((prev) =>
+        prev.map((w) => (w.id === expandedWorkspaceId ? { ...w, lastAccessed: new Date() } : w))
+      );
+    }
     setExpandedWorkspaceId(null);
     setView('home');
-  }, []);
+  }, [expandedWorkspaceId]);
 
   const closeWorkspace = useCallback((id: string) => {
     const workspace = workspaces.find((w) => w.id === id);
     if (workspace?.type === 'file') {
       invoke('unwatch_file', { path: workspace.path }).catch(console.error);
     }
+    setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+    if (expandedWorkspaceId === id) {
+      setExpandedWorkspaceId(null);
+      setView('home');
+    }
+  }, [expandedWorkspaceId, workspaces]);
+
+  const forgetWorkspace = useCallback(async (id: string) => {
+    const workspace = workspaces.find((w) => w.id === id);
+    if (!workspace) return;
+
+    await invoke('forget_workspace_data', {
+      workspacePath: workspace.path,
+      workspaceType: workspace.type,
+    });
+
+    if (workspace.type === 'file') {
+      invoke('unwatch_file', { path: workspace.path }).catch(console.error);
+    }
+
     setWorkspaces((prev) => prev.filter((w) => w.id !== id));
     if (expandedWorkspaceId === id) {
       setExpandedWorkspaceId(null);
@@ -178,6 +200,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     expandWorkspace,
     minimizeWorkspace,
     closeWorkspace,
+    forgetWorkspace,
     finishExpand,
     finishMinimize,
   };

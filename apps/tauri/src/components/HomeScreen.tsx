@@ -2,7 +2,7 @@ import logoSvg from "@/assets/logo.svg";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/contexts/AppContext";
 import { FileText, FolderOpen } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { WorkspaceCard } from "./WorkspaceCard";
 
@@ -10,9 +10,8 @@ const { invoke } = window.__TAURI__.core;
 
 export function HomeScreen () {
   const { t } = useTranslation();
-  const { workspaces, openFile, openDirectory, expandWorkspace, closeWorkspace } = useApp();
+  const { workspaces, openFile, openDirectory, expandWorkspace, closeWorkspace, forgetWorkspace } = useApp();
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-  const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
 
   const byRecent = (a: { lastAccessed: Date }, b: { lastAccessed: Date }) =>
     new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime();
@@ -20,13 +19,11 @@ export function HomeScreen () {
   const fileWorkspaces = workspaces.filter((w) => w.type === "file").sort(byRecent);
   const dirWorkspaces = workspaces.filter((w) => w.type === "directory").sort(byRecent);
 
-  const filePaths = useMemo(() => fileWorkspaces.map((w) => w.path), [fileWorkspaces]);
-  const dirPaths = useMemo(() => dirWorkspaces.map((w) => w.path), [dirWorkspaces]);
-
   const fetchCommentCounts = useCallback(async () => {
-    if (filePaths.length === 0) return;
+    if (fileWorkspaces.length === 0) return;
+    const paths = fileWorkspaces.map((w) => w.path);
     try {
-      const results = await invoke<[string, number][]>("count_unresolved_comments", { filePaths });
+      const results = await invoke<[string, number][]>("count_unresolved_comments", { filePaths: paths });
       const counts: Record<string, number> = {};
       for (const [path, count] of results) {
         counts[path] = count;
@@ -35,29 +32,11 @@ export function HomeScreen () {
     } catch {
       // silently ignore
     }
-  }, [filePaths]);
-
-  const fetchSessionCounts = useCallback(async () => {
-    if (dirPaths.length === 0) return;
-    try {
-      const results = await invoke<[string, number][]>("count_workspace_sessions", { workspacePaths: dirPaths });
-      const counts: Record<string, number> = {};
-      for (const [path, count] of results) {
-        counts[path] = count;
-      }
-      setSessionCounts(counts);
-    } catch {
-      // silently ignore
-    }
-  }, [dirPaths]);
+  }, [fileWorkspaces.map((w) => w.path).join(",")]);
 
   useEffect(() => {
     fetchCommentCounts();
   }, [fetchCommentCounts]);
-
-  useEffect(() => {
-    fetchSessionCounts();
-  }, [fetchSessionCounts]);
 
   const handleOpenFile = () => openFile();
   const handleOpenDirectory = () => openDirectory();
@@ -140,16 +119,17 @@ export function HomeScreen () {
           {fileWorkspaces.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t("home.documents")}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-8 gap-2">
                 {fileWorkspaces.map((workspace) => (
-                    <WorkspaceCard
-                      key={workspace.id}
-                      workspace={workspace}
-                      unresolvedComments={commentCounts[workspace.path]}
-                      onExpand={expandWorkspace}
-                      onClose={closeWorkspace}
-                    />
-                  ))}
+                  <WorkspaceCard
+                    key={workspace.id}
+                    workspace={workspace}
+                    unresolvedComments={commentCounts[workspace.path]}
+                    onExpand={expandWorkspace}
+                    onClose={closeWorkspace}
+                    onForget={forgetWorkspace}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -158,16 +138,16 @@ export function HomeScreen () {
           {dirWorkspaces.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t("home.workspaces")}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-8 gap-2">
                 {dirWorkspaces.map((workspace) => (
-                    <WorkspaceCard
-                      key={workspace.id}
-                      workspace={workspace}
-                      sessionCount={sessionCounts[workspace.path]}
-                      onExpand={expandWorkspace}
-                      onClose={closeWorkspace}
-                    />
-                  ))}
+                  <WorkspaceCard
+                    key={workspace.id}
+                    workspace={workspace}
+                    onExpand={expandWorkspace}
+                    onClose={closeWorkspace}
+                    onForget={forgetWorkspace}
+                  />
+                ))}
               </div>
             </div>
           )}

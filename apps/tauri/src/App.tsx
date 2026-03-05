@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ThemeProvider } from "@/lib/theme";
 import { AppProvider, useApp, ANIMATION_DURATION } from "@/contexts/AppContext";
 import { TopBar } from "@/components/TopBar";
@@ -11,13 +11,18 @@ import { updateTrayLabels, updateMenuLabels } from "@/lib/tray-sync";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import type { CardRect } from "@/types";
 
 const { getCurrentWindow } = window.__TAURI__.window;
 const { invoke } = window.__TAURI__.core;
 const { listen, emit } = window.__TAURI__.event;
 
-const EXPAND_EASING = "cubic-bezier(0.3, 0.0, 0.0, 1)";
-const MINIMIZE_EASING = "cubic-bezier(0.3, 0.0, 0.8, 0.15)";
+const EXPAND_EASING = "cubic-bezier(0.175, 0.885, 0.32, 1.05)";
+const MINIMIZE_EASING = "cubic-bezier(0.32, 0, 0.15, 1)";
+const DURATION_S = `${ANIMATION_DURATION / 1000}s`;
+const SHADOW = "0 30px 90px rgba(0,0,0,0.55), 0 0 0 0.5px rgba(255,255,255,0.1)";
+
+type AnimPhase = "idle" | "preparing" | "expanding" | "settled" | "minimizing";
 
 function AppContent() {
   const {
@@ -27,108 +32,112 @@ function AppContent() {
   } = useApp();
   const mainRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const animTimeoutRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!isExpanding) return;
-    const overlay = overlayRef.current;
-    const content = contentRef.current;
+  const [animPhase, setAnimPhase] = useState<AnimPhase>("idle");
+  const [flipTransform, setFlipTransform] = useState("");
+  const [transitionEnabled, setTransitionEnabled] = useState(false);
+
+  const calcInverseTransform = useCallback((rect: CardRect) => {
     const mainEl = mainRef.current;
-    if (!overlay || !mainEl || !cardRect) {
+    if (!mainEl) return "";
+    const mainW = mainEl.clientWidth;
+    const mainH = mainEl.clientHeight;
+    const sx = rect.width / mainW;
+    const sy = rect.height / mainH;
+    const tx = (rect.left + rect.width / 2) - mainW / 2;
+    const ty = (rect.top + rect.height / 2) - mainH / 2;
+    return `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+  }, []);
+
+  // --- EXPAND phase 1: mount overlay at card position (no transition) ---
+  // Must be useLayoutEffect so the inverse transform is applied before the browser paints
+  // the newly mounted overlay. Otherwise there's a 1-frame flash at full size.
+  useLayoutEffect(() => {
+    if (!isExpanding) return;
+    if (!cardRect) {
+      setFlipTransform("");
+      setTransitionEnabled(false);
+      setAnimPhase("settled");
       finishExpand();
       return;
     }
+    setFlipTransform(calcInverseTransform(cardRect));
+    setTransitionEnabled(false);
+    setAnimPhase("preparing");
+  }, [isExpanding, cardRect, calcInverseTransform, finishExpand]);
 
-    const sourceCard = expandedWorkspaceId
+  // --- EXPAND phase 2: after first paint, enable transition → animate to identity ---
+  useLayoutEffect(() => {
+    if (animPhase !== "preparing") return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    // Force reflow: browser must paint inverse transform before we animate
+    void overlay.offsetHeight;
+
+    // Hide source card during animation
+    const mainEl = mainRef.current;
+    const sourceCard = expandedWorkspaceId && mainEl
       ? mainEl.querySelector<HTMLElement>(`[data-workspace-id="${expandedWorkspaceId}"]`)
       : null;
     if (sourceCard) sourceCard.style.opacity = "0";
 
-    const mainW = mainEl.clientWidth;
-    const mainH = mainEl.clientHeight;
-    const r = cardRect;
-    const insetFrom = `inset(${r.top}px ${mainW - r.left - r.width}px ${mainH - r.top - r.height}px ${r.left}px round 6px)`;
+    setFlipTransform("translate(0px, 0px) scale(1, 1)");
+    setTransitionEnabled(true);
+    setAnimPhase("expanding");
 
-    const clipAnim = overlay.animate(
-      [{ clipPath: insetFrom }, { clipPath: "inset(0 0 0 0 round 0px)" }],
-      { duration: ANIMATION_DURATION, easing: EXPAND_EASING, fill: "forwards" }
-    );
-
-    const contentAnim = content?.animate(
-      [{ opacity: 0 }, { opacity: 1 }],
-      { duration: 200, easing: "ease-out", delay: 120, fill: "forwards" }
-    );
-
-    clipAnim.finished.then(() => {
-      overlay.style.clipPath = "";
-      if (content) content.style.opacity = "";
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
+    animTimeoutRef.current = window.setTimeout(() => {
+      animTimeoutRef.current = null;
+      setAnimPhase("settled");
+      setFlipTransform("");
+      setTransitionEnabled(false);
       if (sourceCard) sourceCard.style.opacity = "";
       finishExpand();
-    }).catch(() => {});
+    }, ANIMATION_DURATION);
+  }, [animPhase, expandedWorkspaceId, finishExpand]);
 
-    return () => {
-      clipAnim.cancel();
-      contentAnim?.cancel();
-      if (sourceCard) sourceCard.style.opacity = "";
-      if (content) content.style.opacity = "";
-    };
-  }, [isExpanding, cardRect, expandedWorkspaceId, finishExpand]);
-
+  // --- MINIMIZE: animate from identity → card position ---
   useEffect(() => {
     if (!isMinimizing) return;
-    const overlay = overlayRef.current;
-    const content = contentRef.current;
     const mainEl = mainRef.current;
-    if (!overlay || !mainEl) {
-      finishMinimize();
-      return;
-    }
+    if (!mainEl) { finishMinimize(); return; }
 
     const card = expandedWorkspaceId
       ? mainEl.querySelector<HTMLElement>(`[data-workspace-id="${expandedWorkspaceId}"]`)
       : null;
-
-    if (!card) {
-      finishMinimize();
-      return;
-    }
+    if (!card) { finishMinimize(); return; }
 
     card.style.opacity = "0";
 
-    const mainW = mainEl.clientWidth;
-    const mainH = mainEl.clientHeight;
     const mainVp = mainEl.getBoundingClientRect();
     const cardVp = card.getBoundingClientRect();
-    const t = {
+    const rect: CardRect = {
       top: cardVp.top - mainVp.top,
       left: cardVp.left - mainVp.left,
       width: cardVp.width,
       height: cardVp.height,
     };
-    const insetTo = `inset(${t.top}px ${mainW - t.left - t.width}px ${mainH - t.top - t.height}px ${t.left}px round 6px)`;
 
-    const clipAnim = overlay.animate(
-      [{ clipPath: "inset(0 0 0 0 round 0px)" }, { clipPath: insetTo }],
-      { duration: ANIMATION_DURATION, easing: MINIMIZE_EASING, fill: "forwards" }
-    );
+    setTransitionEnabled(true);
+    setFlipTransform(calcInverseTransform(rect));
+    setAnimPhase("minimizing");
 
-    const contentAnim = content?.animate(
-      [{ opacity: 1 }, { opacity: 0 }],
-      { duration: 150, easing: "ease-in", fill: "forwards" }
-    );
-
-    clipAnim.finished.then(() => {
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
+    animTimeoutRef.current = window.setTimeout(() => {
+      animTimeoutRef.current = null;
       card.style.opacity = "";
+      setAnimPhase("idle");
+      setFlipTransform("");
+      setTransitionEnabled(false);
       finishMinimize();
-    }).catch(() => {});
+    }, ANIMATION_DURATION);
+  }, [isMinimizing, expandedWorkspaceId, calcInverseTransform, finishMinimize]);
 
-    return () => {
-      clipAnim.cancel();
-      contentAnim?.cancel();
-      card.style.opacity = "";
-      if (content) content.style.opacity = "";
-    };
-  }, [isMinimizing, expandedWorkspaceId, finishMinimize]);
+  useEffect(() => () => {
+    if (animTimeoutRef.current !== null) clearTimeout(animTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     invoke<string | null>("get_initial_file").then((path) => {
@@ -187,21 +196,57 @@ function AppContent() {
     },
   ]);
 
+  const isAnimating = animPhase !== "idle" && animPhase !== "settled";
+
+  const overlayStyle: React.CSSProperties = {
+    transform: flipTransform || undefined,
+    transition: transitionEnabled
+      ? `transform ${DURATION_S} ${animPhase === "minimizing" ? MINIMIZE_EASING : EXPAND_EASING}`
+      : "none",
+    transformOrigin: "center center",
+    willChange: isAnimating ? "transform" : undefined,
+    borderRadius: isAnimating ? 10 : 0,
+    boxShadow: isAnimating ? SHADOW : "none",
+    pointerEvents: isAnimating ? "none" : undefined,
+  };
+
+  const contentStyle: React.CSSProperties = {
+    opacity: animPhase === "preparing" ? 0.4 : animPhase === "minimizing" ? 0.2 : 1,
+    transition: animPhase === "expanding"
+      ? "opacity 0.25s ease-out 0.1s"
+      : animPhase === "minimizing"
+        ? "opacity 0.18s ease-in"
+        : "none",
+  };
+
+  const backdropStyle: React.CSSProperties = {
+    opacity: animPhase === "preparing" || animPhase === "minimizing" ? 0 : 1,
+    transition: `opacity ${DURATION_S} ${animPhase === "minimizing" ? "ease-in" : "ease-out"}`,
+  };
+
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground flex flex-col">
       <TopBar />
       <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden relative">
         <HomeScreen />
         {(view === "file-expanded" || view === "directory-expanded") && (
-          <div
-            ref={overlayRef}
-            className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background"
-            style={isExpanding || isMinimizing ? { pointerEvents: "none" } : undefined}
-          >
-            <div ref={contentRef} className="flex-1 flex flex-col overflow-hidden">
-              {view === "file-expanded" ? <MarkdownViewer /> : <DirectoryWorkspace />}
+          <>
+            {isAnimating && (
+              <div
+                className="absolute inset-0 z-[9] bg-black/45 pointer-events-none"
+                style={backdropStyle}
+              />
+            )}
+            <div
+              ref={overlayRef}
+              className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background"
+              style={overlayStyle}
+            >
+              <div className="flex-1 flex flex-col overflow-hidden" style={contentStyle}>
+                {view === "file-expanded" ? <MarkdownViewer /> : <DirectoryWorkspace />}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </main>
     </div>

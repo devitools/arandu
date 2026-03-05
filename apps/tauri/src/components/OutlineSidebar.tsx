@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Hash, X } from 'lucide-react';
+import { AlignLeft, Pin, PinOff, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { Heading } from '@/types';
 
 interface OutlineSidebarProps {
   headings: Heading[];
+  pinned?: boolean;
+  onTogglePin?: () => void;
   onClose?: () => void;
 }
 
@@ -13,7 +15,7 @@ function headingId(heading: Heading): string {
   return `mkw-heading-${heading.index}`;
 }
 
-export function OutlineSidebar({ headings, onClose }: OutlineSidebarProps) {
+export function OutlineSidebar({ headings, pinned, onTogglePin, onClose }: OutlineSidebarProps) {
   const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string>('');
 
@@ -60,14 +62,21 @@ export function OutlineSidebar({ headings, onClose }: OutlineSidebarProps) {
       <div className="h-full bg-card p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Hash className="h-4 w-4 text-muted-foreground" />
+            <AlignLeft className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-semibold text-sm">{t('outline.title')}</h3>
           </div>
-          {onClose && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {onTogglePin && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')} aria-label={t(pinned ? 'outline.unpin' : 'outline.pin')}>
+                {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+            {onClose && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">{t('outline.empty')}</p>
       </div>
@@ -79,14 +88,21 @@ export function OutlineSidebar({ headings, onClose }: OutlineSidebarProps) {
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Hash className="h-4 w-4 text-muted-foreground" />
+            <AlignLeft className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-semibold text-sm">{t('outline.title')}</h3>
           </div>
-          {onClose && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {onTogglePin && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onTogglePin} title={t(pinned ? 'outline.unpin' : 'outline.pin')} aria-label={t(pinned ? 'outline.unpin' : 'outline.pin')}>
+                {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              </Button>
+            )}
+            {onClose && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide">
