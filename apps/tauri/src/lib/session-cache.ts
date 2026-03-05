@@ -44,6 +44,7 @@ export function clearWorkspaceCaches(workspaceId: string) {
   sessions.delete(workspaceId);
   subscribers.delete(workspaceId);
   ui.delete(workspaceId);
+  clearStreamingTimer(workspaceId);
 }
 
 let msgCounter = 0;
@@ -147,6 +148,32 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
 
 type SessionSubscriber = (entry: SessionEntry) => void;
 const subscribers = new Map<string, Set<SessionSubscriber>>();
+const streamingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const STREAMING_TIMEOUT_MS = 60_000;
+
+function resetStreamingTimer(workspaceId: string) {
+  const existing = streamingTimers.get(workspaceId);
+  if (existing) clearTimeout(existing);
+
+  streamingTimers.set(workspaceId, setTimeout(() => {
+    streamingTimers.delete(workspaceId);
+    const entry = sessions.get(workspaceId);
+    if (entry?.isStreaming) {
+      const updated = { ...entry, isStreaming: false };
+      sessions.set(workspaceId, updated);
+      notifySubscribers(workspaceId, updated);
+    }
+  }, STREAMING_TIMEOUT_MS));
+}
+
+function clearStreamingTimer(workspaceId: string) {
+  const existing = streamingTimers.get(workspaceId);
+  if (existing) {
+    clearTimeout(existing);
+    streamingTimers.delete(workspaceId);
+  }
+}
 
 function notifySubscribers(workspaceId: string, entry: SessionEntry) {
   const subs = subscribers.get(workspaceId);
@@ -170,6 +197,12 @@ function ensureGlobalListener() {
     const newEntry = processSessionUpdate(entry, update);
     sessions.set(workspaceId, newEntry);
     notifySubscribers(workspaceId, newEntry);
+
+    if (newEntry.isStreaming) {
+      resetStreamingTimer(workspaceId);
+    } else {
+      clearStreamingTimer(workspaceId);
+    }
   }).catch(console.error);
 }
 
