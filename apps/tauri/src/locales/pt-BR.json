@@ -5,7 +5,8 @@
     "minimize": "Minimizar",
     "loading": "Carregando...",
     "reload": "Recarregar",
-    "tryAgain": "Tentar Novamente"
+    "tryAgain": "Tentar Novamente",
+    "dismiss": "Dispensar"
   },
   "home": {
     "tagline": "Seu parceiro inteligente no desenvolvimento de software",
@@ -90,7 +91,12 @@
     "disconnected": "Desconectado",
     "streaming": "Gerando…",
     "cancel": "Parar",
+    "disconnect": "Desconectar",
     "reconnect": "Reconectar",
+    "logs": "Logs de Conexão",
+    "logsEmpty": "Nenhum evento de conexão registrado",
+    "logsClear": "Limpar",
+    "logsCopy": "Copiar",
     "modeAsk": "Perguntar",
     "modePlan": "Plano",
     "modeCode": "Código",
@@ -236,5 +242,8 @@
     "showResolved": "Mostrar resolvidos",
     "cancel": "Cancelar",
     "submit": "Adicionar Comentário"
+  },
+  "terminal": {
+    "done": "feito"
   }
 }

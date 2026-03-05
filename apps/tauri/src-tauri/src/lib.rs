@@ -982,6 +982,7 @@ pub fn run() {
             sessions::session_update_plan,
             sessions::session_update_plan_file_path,
             sessions::session_update_phase,
+            sessions::session_update_chat_panel_size,
             sessions::session_delete,
             sessions::forget_workspace_data,
             plan_file::plan_write,

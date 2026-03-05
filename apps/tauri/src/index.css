@@ -61,6 +61,7 @@ html, body, #root {
     --surface-foreground: 0 0% 8%;
     --terminal: 0 0% 22%;
     --terminal-foreground: 0 0% 86%;
+    --terminal-code: 185 67% 45%;
     --status-bar: 0 0% 95%;
     --status-bar-foreground: 0 0% 40%;
   }
@@ -114,6 +115,7 @@ html, body, #root {
     --surface-foreground: 0 0% 92%;
     --terminal: 0 0% 8%;
     --terminal-foreground: 0 0% 78%;
+    --terminal-code: 185 60% 60%;
     --status-bar: 0 0% 12%;
     --status-bar-foreground: 0 0% 70%;
   }
@@ -357,16 +359,51 @@ html, body, #root {
 /* Terminal message grid */
 .terminal-msg {
   display: grid;
-  grid-template-columns: 18px 1fr;
+  grid-template-columns: 14px 1fr;
   align-items: start;
-  gap: 0 8px;
+  gap: 0 4px;
   padding: 6px 16px;
 }
 
 .terminal-msg-user {
+  background: hsl(var(--muted));
   border-top: 1px solid hsl(var(--border) / 0.5);
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
   margin-top: 4px;
   padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* User message — collapsible */
+.terminal-msg-user--collapsible {
+  display: block;
+}
+
+.terminal-msg-user--collapsible details summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.terminal-msg-user--collapsible details summary::-webkit-details-marker {
+  display: none;
+}
+
+.terminal-msg-user--collapsible details summary::before {
+  content: "›";
+  font-weight: bold;
+  color: hsl(var(--muted-foreground));
+  margin-right: 6px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.terminal-msg-user--collapsible details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.terminal-user-body {
+  padding-left: 18px;
 }
 
 /* Dot indicators */
@@ -388,8 +425,14 @@ html, body, #root {
 }
 
 .dot-tool {
-  background: #3dd68c;
-  box-shadow: 0 0 6px #3dd68c80;
+  background: hsl(var(--success));
+  box-shadow: 0 0 6px hsl(var(--success) / 0.5);
+}
+
+.dot-pending {
+  border: 1.5px solid hsl(var(--muted-foreground));
+  background: transparent;
+  opacity: 0.4;
 }
 
 .dot-thinking {
@@ -421,46 +464,65 @@ html, body, #root {
   );
 }
 
-/* Tool details styling */
-.terminal-msg details summary {
-  list-style: none;
-  display: flex;
-  align-items: baseline;
+/* Tool content — single-line (always visible) */
+.tool-content-inline {
+  margin-top: 2px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.terminal-msg details summary::-webkit-details-marker {
+/* Tool content — multi-line (collapsible) */
+.tool-content {
+  margin-top: 2px;
+}
+
+.tool-content summary {
+  list-style: none;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  cursor: pointer;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
+.tool-content summary::-webkit-details-marker {
   display: none;
 }
 
-.terminal-msg details summary::before {
-  content: "›";
-  display: inline-block;
-  margin-right: 6px;
-  font-weight: bold;
-  transition: transform 0.15s ease;
-  color: hsl(var(--muted-foreground));
-  flex-shrink: 0;
+.tool-content > pre {
+  margin-top: 2px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.8);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  padding-left: 12px;
+  border-left: 1px solid hsl(var(--border) / 0.5);
+  max-height: 192px;
+  overflow-y: auto;
 }
 
-.terminal-msg details[open] summary::before {
-  transform: rotate(90deg);
+/* Thinking block — collapsed by default */
+.terminal-thinking summary {
+  list-style: none;
 }
 
-.terminal-msg details summary:hover {
-  background: hsl(var(--muted) / 0.5);
-  border-radius: 4px;
+.terminal-thinking summary::-webkit-details-marker {
+  display: none;
 }
 
-.terminal-msg details[open] summary {
-  background: hsl(var(--muted) / 0.3);
-  border-radius: 4px 4px 0 0;
+.terminal-thinking summary::before {
+  content: "∴ ";
 }
 
-.terminal-msg details[open] > pre {
-  background: hsl(var(--muted) / 0.15);
-  border-radius: 0 0 4px 4px;
-  padding: 8px 10px;
-  margin-top: 0;
+.terminal-thinking[open] summary {
+  margin-bottom: 2px;
+}
+
+.terminal-thinking .terminal-markdown code {
+  color: hsl(var(--muted-foreground) / 0.5);
 }
 
 /* Streaming cursor */
@@ -472,7 +534,7 @@ html, body, #root {
 .streaming-cursor {
   width: 2px;
   height: 13px;
-  background: #3dd68c;
+  background: hsl(var(--success));
   display: inline-block;
   vertical-align: text-bottom;
   margin-left: 1px;
@@ -486,7 +548,7 @@ html, body, #root {
 }
 
 .terminal-caret {
-  color: #3dd68c;
+  color: hsl(var(--success));
   font-weight: bold;
   animation: blink-caret 1.1s step-end infinite;
 }
@@ -532,26 +594,16 @@ html, body, #root {
   margin: 8px 0 4px;
 }
 
-.terminal-markdown ul,
-.terminal-markdown ol {
-  margin: 4px 0 8px 16px;
-  padding-left: 4px;
-}
-
 .terminal-markdown li + li {
   margin-top: 3px;
 }
 
-.terminal-markdown li::marker {
-  color: hsl(var(--muted-foreground));
-}
-
 .terminal-markdown code {
-  color: hsl(var(--foreground));
-  background: hsl(var(--muted));
-  border: 1px solid hsl(var(--border));
-  border-radius: 4px;
-  padding: 1px 5px;
+  color: hsl(var(--terminal-code));
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   font-size: 0.9em;
 }
 
@@ -573,15 +625,18 @@ html, body, #root {
   color: inherit;
 }
 
+.terminal-table-wrapper {
+  overflow-x: auto;
+  margin: 6px 0 10px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+}
+
 .terminal-markdown table {
   border-collapse: separate;
   border-spacing: 0;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  margin: 6px 0 10px;
   width: 100%;
   font-size: 0.9em;
-  overflow: hidden;
 }
 
 .terminal-markdown th,
@@ -621,14 +676,62 @@ html, body, #root {
   margin: 4px 0 8px;
 }
 
+.terminal-markdown ul,
+.terminal-markdown ol {
+  list-style: none;
+  margin: 4px 0 8px 0;
+  padding-left: 4px;
+}
+
+.terminal-markdown ul > li:not(.task-list-item) {
+  position: relative;
+  padding-left: 1em;
+}
+
+.terminal-markdown ul > li:not(.task-list-item)::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.terminal-markdown .task-list-item,
+.terminal-markdown li:has(> input[type="checkbox"]) {
+  padding-left: 0;
+}
+
+.terminal-markdown .task-list-item::before,
+.terminal-markdown li:has(> input[type="checkbox"])::before {
+  content: none;
+}
+
+.terminal-markdown .task-list-item input[type="checkbox"],
+.terminal-markdown li > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid hsl(var(--muted-foreground));
+  border-radius: 50%;
+  background: transparent;
+  vertical-align: middle;
+  margin: 0 8px 0 0;
+  pointer-events: none;
+  position: relative;
+}
+
+.terminal-markdown .task-list-item input[type="checkbox"]:checked,
+.terminal-markdown li > input[type="checkbox"]:checked {
+  background: hsl(var(--success));
+  border-color: hsl(var(--success));
+}
+
 .terminal-markdown a {
-  color: hsl(var(--foreground));
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: hsl(var(--muted-foreground) / 0.4);
-  transition: text-decoration-color 0.15s ease;
+  color: hsl(var(--terminal-code));
+  text-decoration: none;
 }
 
 .terminal-markdown a:hover {
-  text-decoration-color: hsl(var(--foreground));
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

@@ -14,3 +14,8 @@ export function shortenPath(path: string): string {
   }
   return p;
 }
+
+export function shortenPaths(text: string): string {
+  if (!cachedHome) return text;
+  return text.replaceAll(cachedHome, "~");
+}

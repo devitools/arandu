@@ -28,9 +28,17 @@ pub async fn acp_connect(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let mut connections = state.connections.lock().await;
-    if connections.contains_key(&workspace_id) {
-        return Ok(());
+    let existing = {
+        let mut connections = state.connections.lock().await;
+        connections.remove(&workspace_id)
+    };
+    if let Some(existing) = existing {
+        if existing.is_alive().await {
+            state.connections.lock().await.insert(workspace_id.clone(), existing);
+            return Ok(());
+        }
+        existing.shutdown().await;
+        state.configs.lock().await.remove(&workspace_id);
     }
 
     let binary = binary_path
@@ -72,9 +80,10 @@ pub async fn acp_connect(
 
     conn.send_notification("initialized", None).await?;
     conn.emit_status("connected", None);
+    conn.emit_log("info", "connect", &format!("Connected via {}", binary));
 
     state.configs.lock().await.insert(workspace_id.clone(), config);
-    connections.insert(workspace_id, conn);
+    state.connections.lock().await.insert(workspace_id, conn);
     Ok(())
 }
 
@@ -84,8 +93,9 @@ pub async fn acp_disconnect(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     state.configs.lock().await.remove(&workspace_id);
-    let mut connections = state.connections.lock().await;
-    if let Some(conn) = connections.remove(&workspace_id) {
+    let conn = state.connections.lock().await.remove(&workspace_id);
+    if let Some(conn) = conn {
+        conn.emit_log("info", "disconnect", "Disconnected by user");
         conn.shutdown().await;
     }
     Ok(())
@@ -202,9 +212,10 @@ pub async fn acp_send_prompt(
         }],
     };
 
-    conn.send_request(
+    conn.send_request_with_timeout(
         "session/prompt",
         Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+        std::time::Duration::from_secs(600),
     )
     .await?;
 
@@ -265,13 +276,19 @@ pub async fn acp_check_health(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<String, String> {
-    let connections = state.connections.lock().await;
-    let status = if let Some(conn) = connections.get(&workspace_id) {
+    let existing = {
+        let mut connections = state.connections.lock().await;
+        connections.remove(&workspace_id)
+    };
+    let status = if let Some(conn) = existing {
         if conn.is_alive().await {
             conn.emit_status("connected", None);
+            state.connections.lock().await.insert(workspace_id.clone(), conn);
             "connected"
         } else {
             conn.emit_status("disconnected", None);
+            conn.shutdown().await;
+            state.configs.lock().await.remove(&workspace_id);
             "disconnected"
         }
     } else {

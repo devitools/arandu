@@ -7,30 +7,20 @@ import { Button } from "@/components/ui/button";
 import { TerminalChat } from "./TerminalChat";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { useAcpSession } from "@/hooks/useAcpSession";
+import { useAcpLogs } from "@/hooks/useAcpLogs";
 import { usePlanWorkflow } from "@/hooks/usePlanWorkflow";
+import { ConnectionLogs } from "@/components/ConnectionLogs";
 import type { SessionRecord, PlanPhase } from "@/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertCircle, FileText, Loader2, MessageSquare, Minimize2, Plug, RefreshCw, X } from "lucide-react";
-import { Trans } from "react-i18next";
+import { AlertCircle, FileText, Loader2, MessageSquare, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
 const PHASES: PlanPhase[] = ["idle", "planning", "reviewing", "executing", "done"];
@@ -59,9 +49,8 @@ interface ActiveSessionViewProps {
   isConnecting?: boolean;
   onPhaseChange?: (sessionId: string, phase: PlanPhase) => void;
   onConnect?: () => Promise<void>;
-  onReconnect?: () => Promise<void>;
+  onDisconnect?: () => Promise<void>;
   onMinimize?: () => void;
-  onEnd?: () => void;
 }
 
 export function ActiveSessionView({
@@ -72,9 +61,8 @@ export function ActiveSessionView({
   isConnecting,
   onPhaseChange,
   onConnect,
-  onReconnect,
+  onDisconnect,
   onMinimize,
-  onEnd,
 }: ActiveSessionViewProps) {
   const initRef = useRef(false);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
@@ -84,6 +72,7 @@ export function ActiveSessionView({
   const [initError, setInitError] = useState<string | null>(null);
 
   const acp = useAcpSession(workspaceId, workspacePath, isConnected);
+  const acpLogs = useAcpLogs(workspaceId);
 
   const plan = usePlanWorkflow({
     workspaceId,
@@ -105,8 +94,9 @@ export function ActiveSessionView({
   const doInit = useCallback(async () => {
     setInitError(null);
     try {
+      const isNewSession = !session.acp_session_id;
       let acpId: string;
-      if (session.acp_session_id) {
+      if (!isNewSession) {
         acpId = await acp.startSession(session.acp_session_id);
       } else {
         acpId = await acp.startSession();
@@ -117,27 +107,60 @@ export function ActiveSessionView({
       }
 
       if (session.phase === "idle") {
-        plan.startPlanning(acpId, session.initial_prompt);
+        const prompt = isNewSession && session.name
+          ? `${session.name}\n\n${session.initial_prompt}`
+          : session.initial_prompt;
+        plan.startPlanning(acpId, prompt);
       }
     } catch (e) {
       console.error("[ActiveSessionView] init error:", e);
       setInitError(String(e));
     }
-  }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, acp.startSession, plan.startPlanning]);
+  }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, acp.startSession, plan.startPlanning]);
 
   useEffect(() => {
-    if (!isConnected || initRef.current) return;
+    initRef.current = false;
+  }, [session.id, session.acp_session_id]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      initRef.current = false;
+      return;
+    }
+    if (initRef.current) return;
     initRef.current = true;
     doInit();
-  }, [isConnected]);
+  }, [isConnected, session.id, session.acp_session_id]);
 
   const handleReconnect = useCallback(async () => {
     initRef.current = false;
     setInitError(null);
-    if (onReconnect) {
-      await onReconnect();
+    try {
+      if (onDisconnect) await onDisconnect();
+    } catch (e) {
+      console.warn("[ActiveSessionView] disconnect during reconnect failed:", e);
     }
-  }, [onReconnect]);
+    if (onConnect) await onConnect();
+  }, [onDisconnect, onConnect]);
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const handleLayout = useCallback((sizes: number[]) => {
+    if (!session.id || sizes[0] === 0) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      invoke("session_update_chat_panel_size", { id: session.id, size: sizes[0] }).catch(console.error);
+    }, 500);
+  }, [session.id]);
+
+  useEffect(() => {
+    return () => clearTimeout(saveTimerRef.current);
+  }, []);
+
+  const chatDefaultSize = useMemo(() => session.chat_panel_size ?? 40, [session.id]);
+  const planDefaultSize = useMemo(() => {
+    if (session.chat_panel_size != null) return 100 - session.chat_panel_size;
+    return 60;
+  }, [session.id]);
 
   const { t } = useTranslation();
   const currentPhase = plan.phase ?? session.phase;
@@ -215,7 +238,22 @@ export function ActiveSessionView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {!isConnected && !isConnecting && onConnect && (
+          {isConnecting ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("acp.connecting")}
+            </span>
+          ) : isConnected && onDisconnect ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={onDisconnect}
+            >
+              <Unplug className="h-3 w-3" />
+              {t("acp.disconnect")}
+            </Button>
+          ) : !isConnected && onConnect ? (
             <Button
               variant="ghost"
               size="sm"
@@ -225,13 +263,7 @@ export function ActiveSessionView({
               <Plug className="h-3 w-3" />
               {t("acp.connect")}
             </Button>
-          )}
-          {isConnecting && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t("acp.connecting")}
-            </span>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <Button
@@ -254,6 +286,11 @@ export function ActiveSessionView({
               <FileText className="h-3.5 w-3.5" />
             </Button>
           )}
+          <ConnectionLogs
+            logs={acpLogs.logs}
+            hasRecentErrors={acpLogs.hasRecentErrors}
+            onClear={acpLogs.clearLogs}
+          />
           <div className="w-px h-4 bg-border mx-0.5" />
           {onMinimize && (
             <Button
@@ -266,49 +303,18 @@ export function ActiveSessionView({
               <Minimize2 className="h-3.5 w-3.5" />
             </Button>
           )}
-          {onEnd && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  title={t("sessions.endSession")}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t("sessions.endSessionTitle")}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    <Trans
-                      i18nKey="sessions.endSessionDescription"
-                      values={{ name: session.name }}
-                      components={{ strong: <strong /> }}
-                    />
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                  <AlertDialogAction onClick={onEnd}>
-                    {t("sessions.endSession")}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
         </div>
       </div>
       <ResizablePanelGroup
         direction="horizontal"
         className="flex-1 min-h-0"
+        onLayout={handleLayout}
       >
         <ResizablePanel
           id="session-chat"
           ref={chatPanelRef}
           className="relative"
-          defaultSize={40}
+          defaultSize={chatDefaultSize}
           minSize={25}
           collapsible
           collapsedSize={0}
@@ -323,7 +329,6 @@ export function ActiveSessionView({
               onSend={acp.sendPrompt}
               onCancel={acp.cancel}
               onClearErrors={acp.clearErrors}
-              onReconnect={handleReconnect}
               disabled={!isConnected}
               initialPrompt={session.initial_prompt || undefined}
             />
@@ -336,7 +341,7 @@ export function ActiveSessionView({
           id="session-plan"
           ref={planPanelRef}
           className="relative"
-          defaultSize={60}
+          defaultSize={planDefaultSize}
           minSize={20}
           collapsible
           collapsedSize={0}

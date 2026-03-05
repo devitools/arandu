@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { AcpConnectionStatusEvent } from "@/types/acp";
+import { connectionStore } from "@/lib/session-cache";
 
 export type AcpConnectionStatus =
   | "idle"
@@ -21,20 +22,27 @@ export function useAcpConnection(
   workspaceId: string,
   workspacePath: string
 ): UseAcpConnectionReturn {
+  const cached = connectionStore.get(workspaceId);
   const [connectionStatus, setConnectionStatus] =
-    useState<AcpConnectionStatus>("idle");
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const connectedRef = useRef(false);
+    useState<AcpConnectionStatus>(cached?.status ?? "idle");
+  const [connectionError, setConnectionError] = useState<string | null>(cached?.error ?? null);
+  const connectedRef = useRef(cached?.status === "connected");
+
+  const statusRef = useRef(connectionStatus);
+  statusRef.current = connectionStatus;
+  const errorRef = useRef(connectionError);
+  errorRef.current = connectionError;
 
   const isConnected = connectionStatus === "connected";
   const isConnecting = connectionStatus === "connecting";
 
   // Listen to Rust-side connection status events
   useEffect(() => {
-    // Reset state immediately when workspaceId changes to avoid stale UI
-    connectedRef.current = false;
-    setConnectionStatus("idle");
-    setConnectionError(null);
+    if (!connectionStore.has(workspaceId)) {
+      connectedRef.current = false;
+      setConnectionStatus("idle");
+      setConnectionError(null);
+    }
 
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -65,15 +73,40 @@ export function useAcpConnection(
     };
   }, [workspaceId]);
 
-  // Check health when the window regains visibility (e.g., unminimize)
+  // Periodic heartbeat + visibility check
   useEffect(() => {
+    const checkHealth = () => {
+      if (!connectedRef.current) return;
+      window.__TAURI__.core.invoke("acp_check_health", { workspaceId }).catch(() => {});
+    };
+
     const onVisible = () => {
-      if (!document.hidden && connectedRef.current) {
-        window.__TAURI__.core.invoke("acp_check_health", { workspaceId }).catch(() => {});
-      }
+      if (!document.hidden) checkHealth();
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+
+    const interval = setInterval(checkHealth, 30_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(interval);
+    };
+  }, [workspaceId]);
+
+  // Verify cached connection status on mount
+  useEffect(() => {
+    if (!connectionStore.has(workspaceId)) return;
+    window.__TAURI__.core.invoke<string>("acp_check_health", { workspaceId })
+      .then((status) => {
+        const s = status as AcpConnectionStatus;
+        connectedRef.current = s === "connected";
+        setConnectionStatus(s);
+        if (s === "connected") setConnectionError(null);
+      })
+      .catch(() => {
+        connectedRef.current = false;
+        setConnectionStatus("disconnected");
+      });
   }, [workspaceId]);
 
   const connect = useCallback(async () => {
@@ -123,8 +156,12 @@ export function useAcpConnection(
 
   useEffect(() => {
     return () => {
-      window.__TAURI__.core.invoke("acp_disconnect", { workspaceId }).catch(() => {});
-      connectedRef.current = false;
+      if (workspaceId) {
+        connectionStore.set(workspaceId, {
+          status: statusRef.current,
+          error: errorRef.current,
+        });
+      }
     };
   }, [workspaceId]);
 

@@ -62,6 +62,7 @@ export interface SessionRecord {
   plan_markdown: string;
   plan_file_path: string | null;
   phase: PlanPhase;
+  chat_panel_size: number | null;
   created_at: string;
   updated_at: string;
 }

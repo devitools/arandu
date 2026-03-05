@@ -5,7 +5,8 @@
     "minimize": "Minimize",
     "loading": "Loading...",
     "reload": "Reload",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "dismiss": "Dismiss"
   },
   "home": {
     "tagline": "Intelligent development companion",
@@ -90,7 +91,12 @@
     "disconnected": "Disconnected",
     "streaming": "Generating…",
     "cancel": "Stop",
+    "disconnect": "Disconnect",
     "reconnect": "Reconnect",
+    "logs": "Connection Logs",
+    "logsEmpty": "No connection events recorded",
+    "logsClear": "Clear",
+    "logsCopy": "Copy",
     "modeAsk": "Ask",
     "modePlan": "Plan",
     "modeCode": "Code",
@@ -236,5 +242,8 @@
     "showResolved": "Show resolved",
     "cancel": "Cancel",
     "submit": "Add Comment"
+  },
+  "terminal": {
+    "done": "done"
   }
 }

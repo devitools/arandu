@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { Workspace, CardRect } from '@/types';
+import { clearWorkspaceCaches } from '@/lib/session-cache';
 
 const { invoke } = window.__TAURI__.core;
 const { open: openDialog } = window.__TAURI__.dialog;
@@ -27,6 +28,7 @@ interface AppContextValue {
   view: 'home' | 'file-expanded' | 'directory-expanded';
   workspaces: Workspace[];
   expandedWorkspaceId: string | null;
+  persistedWorkspaceId: string | null;
   isMinimizing: boolean;
   isExpanding: boolean;
   cardRect: CardRect | null;
@@ -48,6 +50,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>(loadWorkspaces);
   const [expandedWorkspaceId, setExpandedWorkspaceId] = useState<string | null>(null);
   const [isMinimizing, setIsMinimizing] = useState(false);
+  const [persistedWorkspaceId, setPersistedWorkspaceId] = useState<string | null>(null);
   const [isExpanding, setIsExpanding] = useState(false);
   const [cardRect, setCardRect] = useState<CardRect | null>(null);
 
@@ -105,6 +108,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const existing = workspaces.find((w) => w.type === 'directory' && w.path === dirPath);
     if (existing) {
       setExpandedWorkspaceId(existing.id);
+      setPersistedWorkspaceId(existing.id);
       setView('directory-expanded');
       setWorkspaces((prev) =>
         prev.map((w) => (w.id === existing.id ? { ...w, lastAccessed: new Date() } : w))
@@ -122,6 +126,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
     setWorkspaces((prev) => [...prev, newWorkspace]);
     setExpandedWorkspaceId(id);
+    setPersistedWorkspaceId(id);
     setView('directory-expanded');
   }, [workspaces]);
 
@@ -134,6 +139,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsExpanding(true);
     }
     setExpandedWorkspaceId(id);
+    if (workspace.type === 'directory') {
+      setPersistedWorkspaceId(id);
+    }
     setView(workspace.type === 'file' ? 'file-expanded' : 'directory-expanded');
   }, [workspaces]);
 
@@ -161,12 +169,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (workspace?.type === 'file') {
       invoke('unwatch_file', { path: workspace.path }).catch(console.error);
     }
+    if (workspace?.type === 'directory') {
+      invoke('acp_disconnect', { workspaceId: id }).catch(console.error);
+      clearWorkspaceCaches(id);
+    }
     setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+    if (persistedWorkspaceId === id) {
+      setPersistedWorkspaceId(null);
+    }
     if (expandedWorkspaceId === id) {
       setExpandedWorkspaceId(null);
       setView('home');
     }
-  }, [expandedWorkspaceId, workspaces]);
+  }, [expandedWorkspaceId, persistedWorkspaceId, workspaces]);
 
   const forgetWorkspace = useCallback(async (id: string) => {
     const workspace = workspaces.find((w) => w.id === id);
@@ -180,18 +195,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (workspace.type === 'file') {
       invoke('unwatch_file', { path: workspace.path }).catch(console.error);
     }
+    if (workspace.type === 'directory') {
+      invoke('acp_disconnect', { workspaceId: id }).catch(console.error);
+      clearWorkspaceCaches(id);
+    }
 
     setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+    if (persistedWorkspaceId === id) {
+      setPersistedWorkspaceId(null);
+    }
     if (expandedWorkspaceId === id) {
       setExpandedWorkspaceId(null);
       setView('home');
     }
-  }, [expandedWorkspaceId, workspaces]);
+  }, [expandedWorkspaceId, persistedWorkspaceId, workspaces]);
 
   const value: AppContextValue = {
     view,
     workspaces,
     expandedWorkspaceId,
+    persistedWorkspaceId,
     isMinimizing,
     isExpanding,
     cardRect,
