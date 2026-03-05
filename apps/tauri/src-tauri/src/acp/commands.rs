@@ -28,13 +28,16 @@ pub async fn acp_connect(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
-    let mut connections = state.connections.lock().await;
-    if let Some(existing) = connections.get(&workspace_id) {
+    let existing = {
+        let mut connections = state.connections.lock().await;
+        connections.remove(&workspace_id)
+    };
+    if let Some(existing) = existing {
         if existing.is_alive().await {
+            state.connections.lock().await.insert(workspace_id.clone(), existing);
             return Ok(());
         }
-        let dead = connections.remove(&workspace_id).unwrap();
-        dead.shutdown().await;
+        existing.shutdown().await;
         state.configs.lock().await.remove(&workspace_id);
     }
 
@@ -80,7 +83,7 @@ pub async fn acp_connect(
     conn.emit_log("info", "connect", &format!("Connected via {}", binary));
 
     state.configs.lock().await.insert(workspace_id.clone(), config);
-    connections.insert(workspace_id, conn);
+    state.connections.lock().await.insert(workspace_id, conn);
     Ok(())
 }
 
@@ -273,15 +276,18 @@ pub async fn acp_check_health(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<String, String> {
-    let mut connections = state.connections.lock().await;
-    let status = if let Some(conn) = connections.get(&workspace_id) {
+    let existing = {
+        let mut connections = state.connections.lock().await;
+        connections.remove(&workspace_id)
+    };
+    let status = if let Some(conn) = existing {
         if conn.is_alive().await {
             conn.emit_status("connected", None);
+            state.connections.lock().await.insert(workspace_id.clone(), conn);
             "connected"
         } else {
-            let dead = connections.remove(&workspace_id).unwrap();
-            dead.emit_status("disconnected", None);
-            dead.shutdown().await;
+            conn.emit_status("disconnected", None);
+            conn.shutdown().await;
             state.configs.lock().await.remove(&workspace_id);
             "disconnected"
         }
