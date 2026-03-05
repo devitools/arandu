@@ -99,7 +99,10 @@ export function useAcpSession(
       }
     });
 
-    return unsubscribe;
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      unsubscribe();
+    };
   }, [workspaceId]);
 
   useEffect(() => {
@@ -125,6 +128,10 @@ export function useAcpSession(
         sessionStore.set(workspaceId, fresh);
         setMessages([]);
         setIsStreaming(false);
+        setCurrentMode(null);
+        setAvailableModes([]);
+        setActiveAcpSessionId(null);
+        setAgentPlanFilePath(null);
 
         try {
           const info = await invoke<AcpSessionInfo>("acp_load_session", {
@@ -151,6 +158,10 @@ export function useAcpSession(
         sessionStore.set(workspaceId, fresh);
         setMessages([]);
         setIsStreaming(false);
+        setCurrentMode(null);
+        setAvailableModes([]);
+        setActiveAcpSessionId(null);
+        setAgentPlanFilePath(null);
 
         const info = await invoke<AcpSessionInfo>("acp_new_session", {
           workspaceId,
