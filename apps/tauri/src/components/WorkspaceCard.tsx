@@ -64,6 +64,7 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
                 className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
                 onClick={(e) => e.stopPropagation()}
                 title={t(`${prefix}.forgetAction`)}
+                aria-label={t(`${prefix}.forgetAction`)}
               >
                 <Unlink className="h-3.5 w-3.5" />
               </Button>
@@ -100,6 +101,7 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
             onClose(workspace.id);
           }}
           title={t("common.close")}
+          aria-label={t("common.close")}
         >
           <X className="h-3.5 w-3.5" />
         </Button>

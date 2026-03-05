@@ -54,11 +54,18 @@ function AppContent() {
   // Must be useLayoutEffect so the inverse transform is applied before the browser paints
   // the newly mounted overlay. Otherwise there's a 1-frame flash at full size.
   useLayoutEffect(() => {
-    if (!isExpanding || !cardRect) return;
+    if (!isExpanding) return;
+    if (!cardRect) {
+      setFlipTransform("");
+      setTransitionEnabled(false);
+      setAnimPhase("settled");
+      finishExpand();
+      return;
+    }
     setFlipTransform(calcInverseTransform(cardRect));
     setTransitionEnabled(false);
     setAnimPhase("preparing");
-  }, [isExpanding, cardRect, calcInverseTransform]);
+  }, [isExpanding, cardRect, calcInverseTransform, finishExpand]);
 
   // --- EXPAND phase 2: after first paint, enable transition → animate to identity ---
   useLayoutEffect(() => {

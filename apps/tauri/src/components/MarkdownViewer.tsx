@@ -78,10 +78,10 @@ export function MarkdownViewer({
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === OUTLINE_PINNED_KEY && event.newValue != null) {
+      if (event.key === OUTLINE_PINNED_KEY) {
         setOutlinePinned(event.newValue === "true");
       }
-      if (event.key === REVIEW_PINNED_KEY && event.newValue != null) {
+      if (event.key === REVIEW_PINNED_KEY) {
         setReviewPinned(event.newValue === "true");
       }
     };
@@ -376,6 +376,7 @@ export function MarkdownViewer({
             onClick={handleBlockClick}
           >
             <div className="max-w-4xl mx-auto p-8">
+              {/* Safe: html is produced by comrak (Rust GFM renderer) from local files only */}
               <article
                 ref={articleRef}
                 className="prose prose-slate dark:prose-invert max-w-none"
@@ -386,21 +387,27 @@ export function MarkdownViewer({
 
           {/* Outline toggle button */}
           {!outlineOpen && headings.length > 0 && (
-            <button
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => setOutlineOpen(true)}
-              className="absolute top-3 left-3 z-20 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
+              className="absolute top-3 left-3 z-20 h-8 w-8 text-muted-foreground hover:text-foreground shadow-sm"
               title={t("outline.title")}
+              aria-label={t("outline.title")}
             >
               <AlignLeft className="h-4 w-4" />
-            </button>
+            </Button>
           )}
 
           {/* Review toggle button */}
           {!reviewOpen && (
-            <button
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => { setReviewOpen(true); review.setIsPanelOpen(true); }}
-              className="absolute top-3 right-3 z-20 h-8 w-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shadow-sm"
+              className="absolute top-3 right-3 z-20 h-8 w-8 text-muted-foreground hover:text-foreground shadow-sm"
               title={t("review.togglePanel")}
+              aria-label={t("review.togglePanel")}
             >
               <MessageSquare className="h-3.5 w-3.5" />
               {review.unresolvedCount > 0 && (
@@ -408,7 +415,7 @@ export function MarkdownViewer({
                   {review.unresolvedCount}
                 </span>
               )}
-            </button>
+            </Button>
           )}
 
           {/* Floating outline overlay */}
