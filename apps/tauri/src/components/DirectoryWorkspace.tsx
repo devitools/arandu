@@ -1,19 +1,8 @@
 import { useState, useCallback, useRef } from "react";
 import type { PlanPhase } from "@/types";
-import { Loader2, Minimize2, Plus, X } from "lucide-react";
+import { Loader2, Minimize2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { shortenPath } from "@/lib/format-path";
 import { useApp } from "@/contexts/AppContext";
 import { NewSessionForm } from "./NewSessionForm";
@@ -25,7 +14,7 @@ import type { SessionRecord } from "@/types";
 
 export function DirectoryWorkspace() {
   const { t } = useTranslation();
-  const { workspaces, expandedWorkspaceId, minimizeWorkspace, closeWorkspace } = useApp();
+  const { workspaces, expandedWorkspaceId, minimizeWorkspace } = useApp();
   const workspace = workspaces.find((w) => w.id === expandedWorkspaceId);
 
   const [showNewForm, setShowNewForm] = useState(false);
@@ -132,41 +121,6 @@ export function DirectoryWorkspace() {
           <Button variant="ghost" size="icon" onClick={minimizeWorkspace} className="h-8 w-8" title={t("common.minimize")}>
             <Minimize2 className="h-4 w-4" />
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
-                title={t("common.close")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("workspace.closeTitle")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  <Trans
-                    i18nKey="workspace.closeDescription"
-                    values={{ name: workspace.displayName }}
-                    components={{ strong: <strong /> }}
-                  />
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={async () => {
-                    await connection.disconnect();
-                    closeWorkspace(workspace.id);
-                  }}
-                >
-                  {t("common.close")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
       </div>
 

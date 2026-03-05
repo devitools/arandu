@@ -1,4 +1,4 @@
-import { MessageSquare, X } from 'lucide-react';
+import { MessageSquare, Unlink, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,17 +24,19 @@ interface WorkspaceCardProps {
   sessionCount?: number;
   onExpand: (id: string, rect?: CardRect) => void;
   onClose: (id: string) => void;
+  onForget?: (id: string) => Promise<void>;
 }
 
-export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onExpand, onClose }: WorkspaceCardProps) {
+export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onExpand, onClose, onForget }: WorkspaceCardProps) {
   const { t, i18n } = useTranslation();
 
-  const prefix = workspace.type === 'directory' ? 'workspace' : 'document';
+  const isDirectory = workspace.type === 'directory';
+  const prefix = isDirectory ? 'workspace' : 'document';
 
   return (
     <Card
       data-workspace-id={workspace.id}
-      className="group relative px-5 py-4 cursor-pointer hover:bg-accent/50 transition-colors duration-150 min-h-[120px] flex flex-col justify-between"
+      className="group relative px-5 py-4 cursor-pointer hover:bg-accent/50 hover:scale-[1.03] transition-all duration-150 min-h-[120px] flex flex-col justify-between"
       onClick={(e) => {
         const cardEl = e.currentTarget;
         const mainEl = cardEl.closest('main');
@@ -52,36 +54,56 @@ export function WorkspaceCard({ workspace, unresolvedComments, sessionCount, onE
         });
       }}
     >
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-1.5 right-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive z-10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t(`${prefix}.closeTitle`)}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <Trans
-                i18nKey={`${prefix}.closeDescription`}
-                values={{ name: workspace.displayName }}
-                components={{ strong: <strong /> }}
-              />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => onClose(workspace.id)}>
-              {t("common.close")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        {isDirectory && onForget && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
+                onClick={(e) => e.stopPropagation()}
+                title={t(`${prefix}.forgetAction`)}
+              >
+                <Unlink className="h-3.5 w-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t(`${prefix}.forgetTitle`)}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  <Trans
+                    i18nKey={`${prefix}.forgetDescription`}
+                    values={{ name: workspace.displayName }}
+                    components={{ strong: <strong /> }}
+                  />
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => onForget(workspace.id)}
+                >
+                  {t(`${prefix}.forgetAction`)}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 hover:bg-muted"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose(workspace.id);
+          }}
+          title={t("common.close")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
       {unresolvedComments != null && unresolvedComments > 0 && (
         <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 text-muted-foreground group-hover:opacity-0 transition-opacity">

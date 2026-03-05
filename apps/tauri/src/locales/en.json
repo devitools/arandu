@@ -26,7 +26,10 @@
   },
   "workspace": {
     "closeTitle": "Close workspace?",
-    "closeDescription": "Close <strong>{{name}}</strong>? You can reopen it later.",
+    "closeDescription": "The workspace <strong>{{name}}</strong> will be removed from the home screen. Sessions will be preserved and restored when reopened.",
+    "forgetTitle": "Forget workspace?",
+    "forgetDescription": "All sessions and plans for <strong>{{name}}</strong> will be removed from Arandu. The folder and its files will not be affected.",
+    "forgetAction": "Forget",
     "tabChat": "Chat",
     "tabPlan": "Plan",
     "tabTasks": "Tasks",
@@ -37,17 +40,22 @@
   },
   "document": {
     "closeTitle": "Close document?",
-    "closeDescription": "Close <strong>{{name}}</strong>? You can reopen it later.",
+    "closeDescription": "The document <strong>{{name}}</strong> will be removed from the home screen. Comments will be preserved and restored when reopened.",
+    "forgetTitle": "Forget document?",
+    "forgetDescription": "All comments for <strong>{{name}}</strong> will be removed from Arandu. The file will not be affected.",
+    "forgetAction": "Forget",
     "errorTitle": "Failed to open file"
   },
   "outline": {
     "title": "Outline",
-    "empty": "No headings found"
+    "empty": "No headings found",
+    "pin": "Pin panel",
+    "unpin": "Unpin panel"
   },
   "sessions": {
-    "newSession": "New Session",
+    "newSession": "Start Session",
     "empty": "No sessions yet",
-    "emptyWorkspace": "Select or create a session to start",
+    "emptyWorkspace": "Use the button below to start a session",
     "backToSessions": "Sessions",
     "formDescription": "Give your session a name and describe what you want to accomplish.",
     "formName": "Session name",
@@ -207,6 +215,8 @@
   },
   "review": {
     "panelTitle": "Review",
+    "pin": "Pin panel",
+    "unpin": "Unpin panel",
     "togglePanel": "Toggle review panel",
     "selectBlocksHint": "Click document blocks to comment",
     "commentingOn": "Commenting on:",

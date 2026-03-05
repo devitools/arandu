@@ -13,17 +13,15 @@ describe('WorkspaceCard', () => {
     lastAccessed: new Date('2024-01-01T12:00:00'),
   };
 
-  it('renders workspace information', () => {
-    const onExpand = vi.fn();
-    const onClose = vi.fn();
+  const defaultProps = {
+    workspace: mockWorkspace,
+    onExpand: vi.fn(),
+    onClose: vi.fn(),
+    onForget: vi.fn(),
+  };
 
-    render(
-      <WorkspaceCard
-        workspace={mockWorkspace}
-        onExpand={onExpand}
-        onClose={onClose}
-      />
-    );
+  it('renders workspace information', () => {
+    render(<WorkspaceCard {...defaultProps} />);
 
     expect(screen.getByText('file.md')).toBeInTheDocument();
     expect(screen.getByText('/path/to/file.md')).toBeInTheDocument();
@@ -32,15 +30,10 @@ describe('WorkspaceCard', () => {
   it('calls onExpand when card is clicked', async () => {
     const user = userEvent.setup();
     const onExpand = vi.fn();
-    const onClose = vi.fn();
 
     render(
       <main>
-        <WorkspaceCard
-          workspace={mockWorkspace}
-          onExpand={onExpand}
-          onClose={onClose}
-        />
+        <WorkspaceCard {...defaultProps} onExpand={onExpand} />
       </main>
     );
 
@@ -56,43 +49,55 @@ describe('WorkspaceCard', () => {
     }
   });
 
-  it('calls onClose when close button is clicked and confirmed', async () => {
+  it('calls onClose directly when X button is clicked', async () => {
     const user = userEvent.setup();
-    const onExpand = vi.fn();
     const onClose = vi.fn();
+    const onExpand = vi.fn();
 
-    render(
-      <WorkspaceCard
-        workspace={mockWorkspace}
-        onExpand={onExpand}
-        onClose={onClose}
-      />
-    );
+    render(<WorkspaceCard {...defaultProps} onClose={onClose} onExpand={onExpand} />);
 
-    const closeButton = screen.getByRole('button');
+    const closeButton = screen.getByTitle('Fechar');
     await user.click(closeButton);
-
-    const confirmButton = await screen.findByRole('button', { name: 'Fechar' });
-    await user.click(confirmButton);
 
     expect(onClose).toHaveBeenCalledWith('1');
     expect(onExpand).not.toHaveBeenCalled();
   });
 
+  it('calls onForget after confirmation for directory workspaces', async () => {
+    const user = userEvent.setup();
+    const onForget = vi.fn();
+    const dirWorkspace: Workspace = {
+      id: '2',
+      type: 'directory',
+      path: '/path/to/project',
+      displayName: 'project',
+      lastAccessed: new Date('2024-01-01T12:00:00'),
+    };
+
+    render(<WorkspaceCard {...defaultProps} workspace={dirWorkspace} onForget={onForget} />);
+
+    const forgetButton = screen.getByTitle('Esquecer');
+    await user.click(forgetButton);
+
+    const confirmButton = await screen.findByRole('button', { name: 'Esquecer' });
+    await user.click(confirmButton);
+
+    expect(onForget).toHaveBeenCalledWith('2');
+  });
+
+  it('does not show forget button for file workspaces', () => {
+    render(<WorkspaceCard {...defaultProps} />);
+
+    expect(screen.queryByTitle('Esquecer')).not.toBeInTheDocument();
+  });
+
   it('prevents card expansion when close button is clicked', async () => {
     const user = userEvent.setup();
     const onExpand = vi.fn();
-    const onClose = vi.fn();
 
-    render(
-      <WorkspaceCard
-        workspace={mockWorkspace}
-        onExpand={onExpand}
-        onClose={onClose}
-      />
-    );
+    render(<WorkspaceCard {...defaultProps} onExpand={onExpand} />);
 
-    const closeButton = screen.getByRole('button');
+    const closeButton = screen.getByTitle('Fechar');
     await user.click(closeButton);
 
     expect(onExpand).not.toHaveBeenCalled();

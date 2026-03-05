@@ -26,7 +26,10 @@
   },
   "workspace": {
     "closeTitle": "Fechar área de trabalho?",
-    "closeDescription": "Deseja fechar <strong>{{name}}</strong>? Você pode reabri-lo depois.",
+    "closeDescription": "A área de trabalho <strong>{{name}}</strong> será removida da tela inicial. As sessões serão preservadas e restauradas ao reabrir.",
+    "forgetTitle": "Esquecer área de trabalho?",
+    "forgetDescription": "Todas as sessões e planos de <strong>{{name}}</strong> serão removidos do Arandu. A pasta e seus arquivos não serão afetados.",
+    "forgetAction": "Esquecer",
     "tabChat": "Chat",
     "tabPlan": "Plano",
     "tabTasks": "Tarefas",
@@ -37,17 +40,22 @@
   },
   "document": {
     "closeTitle": "Fechar documento?",
-    "closeDescription": "Deseja fechar <strong>{{name}}</strong>? Você pode reabri-lo depois.",
+    "closeDescription": "O documento <strong>{{name}}</strong> será removido da tela inicial. Os comentários serão preservados e restaurados ao reabrir.",
+    "forgetTitle": "Esquecer documento?",
+    "forgetDescription": "Todos os comentários de <strong>{{name}}</strong> serão removidos do Arandu. O arquivo não será afetado.",
+    "forgetAction": "Esquecer",
     "errorTitle": "Erro ao abrir arquivo"
   },
   "outline": {
     "title": "Sumário",
-    "empty": "Nenhum título encontrado"
+    "empty": "Nenhum título encontrado",
+    "pin": "Fixar painel",
+    "unpin": "Soltar painel"
   },
   "sessions": {
-    "newSession": "Nova Sessão",
+    "newSession": "Iniciar Sessão",
     "empty": "Nenhuma sessão ainda",
-    "emptyWorkspace": "Selecione ou crie uma sessão para começar",
+    "emptyWorkspace": "Use o botão abaixo para iniciar uma sessão",
     "backToSessions": "Sessões",
     "formDescription": "Dê um nome para a sessão e descreva o que deseja realizar.",
     "formName": "Nome da sessão",
@@ -207,6 +215,8 @@
   },
   "review": {
     "panelTitle": "Review",
+    "pin": "Fixar painel",
+    "unpin": "Soltar painel",
     "togglePanel": "Abrir/fechar painel de review",
     "selectBlocksHint": "Clique nos blocos do documento para comentar",
     "commentingOn": "Comentando em:",
