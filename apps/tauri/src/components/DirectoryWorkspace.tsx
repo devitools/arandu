@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { PlanPhase } from "@/types";
 import { Loader2, Minimize2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,15 @@ import { ActiveSessionView } from "./ActiveSessionView";
 import { SessionCard } from "./SessionCard";
 import { useLocalSessions } from "@/hooks/useLocalSessions";
 import { useAcpConnection } from "@/hooks/useAcpConnection";
+import { uiStore } from "@/lib/session-cache";
 import type { SessionRecord } from "@/types";
 
 export function DirectoryWorkspace() {
   const { t } = useTranslation();
-  const { workspaces, expandedWorkspaceId, minimizeWorkspace } = useApp();
-  const workspace = workspaces.find((w) => w.id === expandedWorkspaceId);
+  const { workspaces, expandedWorkspaceId, persistedWorkspaceId, minimizeWorkspace } = useApp();
+  const workspace = workspaces.find((w) => w.id === (expandedWorkspaceId ?? persistedWorkspaceId));
+
+  const cachedMountedSessionId = workspace ? uiStore.get(workspace.id)?.mountedSessionId ?? null : null;
 
   const [showNewForm, setShowNewForm] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -24,6 +27,26 @@ export function DirectoryWorkspace() {
 
   const local = useLocalSessions(workspace?.path ?? "");
   const connection = useAcpConnection(workspace?.id ?? "", workspace?.path ?? "");
+
+  useEffect(() => {
+    if (cachedMountedSessionId && !mountedSessionRef.current && !local.loading && local.sessions.length > 0) {
+      const session = local.sessions.find((s) => s.id === cachedMountedSessionId);
+      if (session) {
+        mountedSessionRef.current = session;
+        setBrowsing(false);
+      }
+    }
+  }, [cachedMountedSessionId, local.sessions, local.loading]);
+
+  useEffect(() => {
+    return () => {
+      if (workspace?.id) {
+        uiStore.set(workspace.id, {
+          mountedSessionId: mountedSessionRef.current?.id ?? null,
+        });
+      }
+    };
+  }, [workspace?.id]);
 
   const mountedSession = mountedSessionRef.current
     ? local.sessions.find((s) => s.id === mountedSessionRef.current!.id) ?? mountedSessionRef.current
@@ -79,11 +102,6 @@ export function DirectoryWorkspace() {
     setBrowsing(true);
   }, []);
 
-  const handleReconnect = useCallback(async () => {
-    await connection.disconnect();
-    await connection.connect();
-  }, [connection]);
-
   if (!workspace) return null;
 
   return (
@@ -136,13 +154,8 @@ export function DirectoryWorkspace() {
               isConnecting={connection.isConnecting}
               onPhaseChange={handlePhaseChange}
               onConnect={connection.connect}
-              onReconnect={handleReconnect}
+              onDisconnect={connection.disconnect}
               onMinimize={handleBackToSessions}
-              onEnd={async () => {
-                await connection.disconnect();
-                mountedSessionRef.current = null;
-                setBrowsing(true);
-              }}
             />
           </div>
         )}

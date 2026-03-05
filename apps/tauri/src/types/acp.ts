@@ -44,3 +44,18 @@ export interface AcpConnectionStatusEvent {
   status: "connecting" | "connected" | "disconnected" | "reconnecting";
   attempt?: number;
 }
+
+export interface AcpHeartbeatEvent {
+  workspaceId: string;
+  status: "healthy" | "degraded" | "disconnected";
+  latencyMs?: number;
+  timestamp: string;
+}
+
+export interface AcpConnectionLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error";
+  event: string;
+  message: string;
+  workspaceId: string;
+}

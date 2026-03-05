@@ -405,7 +405,7 @@ export function MarkdownViewer({
               variant="outline"
               size="icon"
               onClick={() => { setReviewOpen(true); review.setIsPanelOpen(true); }}
-              className="absolute top-3 right-3 z-20 h-8 w-8 text-muted-foreground hover:text-foreground shadow-sm"
+              className="absolute top-3 right-5 z-20 h-8 w-8 text-muted-foreground hover:text-foreground shadow-sm"
               title={t("review.togglePanel")}
               aria-label={t("review.togglePanel")}
             >

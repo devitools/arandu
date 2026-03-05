@@ -1,7 +1,5 @@
 import { useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { AcpMessage } from "@/types/acp";
 import { TerminalMessage } from "./TerminalMessage";
 import { TerminalInput } from "./TerminalInput";
@@ -14,7 +12,6 @@ interface TerminalChatProps {
   onSend: (text: string) => void;
   onCancel: () => void;
   onClearErrors: () => void;
-  onReconnect?: () => void;
   disabled?: boolean;
   placeholder?: string;
   initialPrompt?: string;
@@ -27,7 +24,6 @@ export function TerminalChat({
   onSend,
   onCancel,
   onClearErrors,
-  onReconnect,
   disabled,
   placeholder,
   initialPrompt,
@@ -44,11 +40,11 @@ export function TerminalChat({
   return (
     <div className="h-full flex flex-col min-h-0 bg-card">
       <div className="flex-1 relative min-h-0">
-        <div ref={scrollRef} className="absolute inset-0 overflow-auto py-4 terminal-scroll-fade">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto overflow-x-hidden py-4 terminal-scroll-fade">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-start justify-start gap-3 pt-2">
+          <div className="flex flex-col items-stretch gap-3">
             {initialPrompt ? (
-              <div className="w-full px-4 py-3 mx-4 rounded border border-border bg-muted/30">
+              <div className="px-4 py-3 mx-4 rounded border border-border bg-muted/30">
                 <p className="text-xs text-muted-foreground/60 font-mono mb-1">{t("sessions.formPrompt")}</p>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap font-mono">{initialPrompt}</p>
               </div>
@@ -56,12 +52,6 @@ export function TerminalChat({
               <p className="text-muted-foreground/50 font-mono text-sm">
                 {t("chat.emptyState")}
               </p>
-            )}
-            {onReconnect && disabled && (
-              <Button variant="outline" size="sm" className="mx-4 text-xs gap-1.5" onClick={onReconnect}>
-                <RefreshCw className="h-3.5 w-3.5" />
-                {t("acp.reconnect")}
-              </Button>
             )}
           </div>
         ) : (

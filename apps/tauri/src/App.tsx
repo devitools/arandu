@@ -28,7 +28,7 @@ function AppContent() {
   const {
     view, openFile, openDirectory, minimizeWorkspace,
     isMinimizing, isExpanding, cardRect, expandedWorkspaceId,
-    finishExpand, finishMinimize,
+    persistedWorkspaceId, finishExpand, finishMinimize,
   } = useApp();
   const mainRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -229,7 +229,7 @@ function AppContent() {
       <TopBar />
       <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden relative">
         <HomeScreen />
-        {(view === "file-expanded" || view === "directory-expanded") && (
+        {view === "file-expanded" && (
           <>
             {isAnimating && (
               <div
@@ -243,7 +243,33 @@ function AppContent() {
               style={overlayStyle}
             >
               <div className="flex-1 flex flex-col overflow-hidden" style={contentStyle}>
-                {view === "file-expanded" ? <MarkdownViewer /> : <DirectoryWorkspace />}
+                <MarkdownViewer />
+              </div>
+            </div>
+          </>
+        )}
+
+        {(view === "directory-expanded" || persistedWorkspaceId) && (
+          <>
+            {view === "directory-expanded" && isAnimating && (
+              <div
+                className="absolute inset-0 z-[9] bg-black/45 pointer-events-none"
+                style={backdropStyle}
+              />
+            )}
+            <div
+              ref={view === "directory-expanded" ? overlayRef : undefined}
+              className={view === "directory-expanded"
+                ? "absolute inset-0 z-10 flex flex-col overflow-hidden bg-background"
+                : "hidden"
+              }
+              style={view === "directory-expanded" ? overlayStyle : undefined}
+            >
+              <div
+                className="flex-1 flex flex-col overflow-hidden"
+                style={view === "directory-expanded" ? contentStyle : undefined}
+              >
+                <DirectoryWorkspace key={persistedWorkspaceId} />
               </div>
             </div>
           </>
