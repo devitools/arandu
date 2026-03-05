@@ -1,0 +1,51 @@
+:root {
+  --vp-font-family-base: 'Inter', sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', monospace;
+
+  /* Brand colors - Light mode */
+  --vp-c-brand-1: #2d1b69;
+  --vp-c-brand-2: #3d2689;
+  --vp-c-brand-3: #4d31a9;
+  --vp-c-brand-soft: rgba(45, 27, 105, 0.1);
+
+  /* Tip/info colors - Gold accent */
+  --vp-c-tip-1: #d4821e;
+  --vp-c-tip-2: #f4c430;
+  --vp-c-tip-soft: rgba(244, 196, 48, 0.1);
+}
+
+.dark {
+  /* Brand colors - Dark mode */
+  --vp-c-brand-1: #8b7bc7;
+  --vp-c-brand-2: #9d8fd4;
+  --vp-c-brand-3: #af9fd0;
+  --vp-c-brand-soft: rgba(139, 123, 199, 0.16);
+
+  /* Tip/info colors - Gold accent */
+  --vp-c-tip-1: #f4c430;
+  --vp-c-tip-2: #d4821e;
+  --vp-c-tip-soft: rgba(244, 196, 48, 0.16);
+}
+
+/* Hero gradient on name */
+.VPHero .name .clip {
+  background: linear-gradient(135deg, #f4c430, #d4821e) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+/* Pronunciation helper class */
+.pronunciation {
+  font-style: italic;
+  color: var(--vp-c-text-2);
+  font-size: 0.95em;
+}
+
+.pronunciation .ipa {
+  font-family: var(--vp-font-family-mono);
+  background: var(--vp-c-bg-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-style: normal;
+}
