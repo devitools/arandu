@@ -147,6 +147,25 @@ pub struct ConnectionStatusEvent {
     pub attempt: Option<u32>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatEvent {
+    pub workspace_id: String,
+    pub status: String,
+    pub latency_ms: Option<u64>,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionLogEntry {
+    pub timestamp: String,
+    pub level: String,
+    pub event: String,
+    pub message: String,
+    pub workspace_id: String,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // stored for future reconnect support
 pub struct ConnectionConfig {

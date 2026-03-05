@@ -29,8 +29,13 @@ pub async fn acp_connect(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let mut connections = state.connections.lock().await;
-    if connections.contains_key(&workspace_id) {
-        return Ok(());
+    if let Some(existing) = connections.get(&workspace_id) {
+        if existing.is_alive().await {
+            return Ok(());
+        }
+        let dead = connections.remove(&workspace_id).unwrap();
+        dead.shutdown().await;
+        state.configs.lock().await.remove(&workspace_id);
     }
 
     let binary = binary_path
@@ -72,6 +77,7 @@ pub async fn acp_connect(
 
     conn.send_notification("initialized", None).await?;
     conn.emit_status("connected", None);
+    conn.emit_log("info", "connect", &format!("Connected via {}", binary));
 
     state.configs.lock().await.insert(workspace_id.clone(), config);
     connections.insert(workspace_id, conn);
@@ -86,6 +92,7 @@ pub async fn acp_disconnect(
     state.configs.lock().await.remove(&workspace_id);
     let mut connections = state.connections.lock().await;
     if let Some(conn) = connections.remove(&workspace_id) {
+        conn.emit_log("info", "disconnect", "Disconnected by user");
         conn.shutdown().await;
     }
     Ok(())
@@ -202,9 +209,10 @@ pub async fn acp_send_prompt(
         }],
     };
 
-    conn.send_request(
+    conn.send_request_with_timeout(
         "session/prompt",
         Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+        std::time::Duration::from_secs(600),
     )
     .await?;
 
@@ -265,13 +273,16 @@ pub async fn acp_check_health(
     app_handle: AppHandle,
     state: State<'_, AcpState>,
 ) -> Result<String, String> {
-    let connections = state.connections.lock().await;
+    let mut connections = state.connections.lock().await;
     let status = if let Some(conn) = connections.get(&workspace_id) {
         if conn.is_alive().await {
             conn.emit_status("connected", None);
             "connected"
         } else {
-            conn.emit_status("disconnected", None);
+            let dead = connections.remove(&workspace_id).unwrap();
+            dead.emit_status("disconnected", None);
+            dead.shutdown().await;
+            state.configs.lock().await.remove(&workspace_id);
             "disconnected"
         }
     } else {

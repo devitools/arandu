@@ -11,6 +11,7 @@ pub struct SessionRecord {
     pub plan_markdown: String,
     pub plan_file_path: Option<String>,
     pub phase: String,
+    pub chat_panel_size: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -42,6 +43,15 @@ pub fn init_sessions_table(conn: &Connection) -> Result<(), String> {
             .map_err(|e| format!("Migration failed: {}", e))?;
     }
 
+    // Migration: add chat_panel_size column
+    let has_chat_panel_size: bool = conn
+        .prepare("SELECT chat_panel_size FROM sessions LIMIT 0")
+        .is_ok();
+    if !has_chat_panel_size {
+        conn.execute_batch("ALTER TABLE sessions ADD COLUMN chat_panel_size REAL;")
+            .map_err(|e| format!("Migration failed: {}", e))?;
+    }
+
     Ok(())
 }
 
@@ -49,7 +59,7 @@ pub fn list_sessions(conn: &Connection, workspace_path: &str) -> Result<Vec<Sess
     let mut stmt = conn
         .prepare(
             "SELECT id, workspace_path, acp_session_id, name, initial_prompt,
-                    plan_markdown, plan_file_path, phase, created_at, updated_at
+                    plan_markdown, plan_file_path, phase, chat_panel_size, created_at, updated_at
              FROM sessions WHERE workspace_path = ?1
              ORDER BY updated_at DESC"
         )
@@ -66,8 +76,9 @@ pub fn list_sessions(conn: &Connection, workspace_path: &str) -> Result<Vec<Sess
                 plan_markdown: row.get(5)?,
                 plan_file_path: row.get(6)?,
                 phase: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                chat_panel_size: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         })
         .map_err(|e| format!("Query error: {}", e))?
@@ -80,7 +91,7 @@ pub fn list_sessions(conn: &Connection, workspace_path: &str) -> Result<Vec<Sess
 pub fn get_session(conn: &Connection, id: &str) -> Result<SessionRecord, String> {
     conn.query_row(
         "SELECT id, workspace_path, acp_session_id, name, initial_prompt,
-                plan_markdown, plan_file_path, phase, created_at, updated_at
+                plan_markdown, plan_file_path, phase, chat_panel_size, created_at, updated_at
          FROM sessions WHERE id = ?1",
         params![id],
         |row| {
@@ -93,8 +104,9 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<SessionRecord, String>
                 plan_markdown: row.get(5)?,
                 plan_file_path: row.get(6)?,
                 phase: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
+                chat_panel_size: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         },
     )
@@ -165,6 +177,15 @@ pub fn update_plan_file_path(conn: &Connection, id: &str, plan_file_path: &str) 
         params![plan_file_path, now, id],
     )
     .map_err(|e| format!("Update plan_file_path error: {}", e))?;
+    Ok(())
+}
+
+pub fn update_chat_panel_size(conn: &Connection, id: &str, size: f64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE sessions SET chat_panel_size = ?1 WHERE id = ?2",
+        params![size, id],
+    )
+    .map_err(|e| format!("Update chat_panel_size error: {}", e))?;
     Ok(())
 }
 
@@ -298,6 +319,16 @@ pub fn session_update_plan_file_path(
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     update_plan_file_path(&conn, &id, &plan_file_path)
+}
+
+#[tauri::command]
+pub fn session_update_chat_panel_size(
+    id: String,
+    size: f64,
+    db: tauri::State<CommentsDb>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    update_chat_panel_size(&conn, &id, size)
 }
 
 #[tauri::command]

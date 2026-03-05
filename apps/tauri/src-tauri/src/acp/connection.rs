@@ -15,7 +15,7 @@ pub struct AcpConnection {
     child: ChildRef,
     writer_tx: mpsc::Sender<String>,
     pending: PendingMap,
-    next_id: AtomicU64,
+    next_id: Arc<AtomicU64>,
     reader_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     writer_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     heartbeat_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -64,8 +64,12 @@ impl AcpConnection {
         ));
 
         let child_arc: ChildRef = Arc::new(Mutex::new(Some(child)));
+        let next_id = Arc::new(AtomicU64::new(1));
         let heartbeat_handle = tokio::spawn(Self::heartbeat_task(
             child_arc.clone(),
+            writer_tx.clone(),
+            pending.clone(),
+            next_id.clone(),
             workspace_id.clone(),
             app_handle.clone(),
         ));
@@ -74,7 +78,7 @@ impl AcpConnection {
             child: child_arc,
             writer_tx,
             pending,
-            next_id: AtomicU64::new(1),
+            next_id,
             reader_handle: Mutex::new(Some(reader_handle)),
             writer_handle: Mutex::new(Some(writer_handle)),
             heartbeat_handle: Mutex::new(Some(heartbeat_handle)),
@@ -169,6 +173,7 @@ impl AcpConnection {
             }
         }
         eprintln!("[acp] Reader task ended for workspace {}", workspace_id);
+        emit_log_raw(&app_handle, &workspace_id, "warn", "reader_exit", "Reader task ended — stdout closed");
         let event = ConnectionStatusEvent {
             workspace_id: workspace_id.clone(),
             status: "disconnected".to_string(),
@@ -177,17 +182,101 @@ impl AcpConnection {
         let _ = app_handle.emit("acp:connection-status", &event);
     }
 
-    async fn heartbeat_task(child: ChildRef, workspace_id: String, app_handle: AppHandle) {
+    async fn heartbeat_task(
+        child: ChildRef,
+        writer_tx: mpsc::Sender<String>,
+        pending: PendingMap,
+        next_id: Arc<AtomicU64>,
+        workspace_id: String,
+        app_handle: AppHandle,
+    ) {
         let interval = std::time::Duration::from_secs(15);
+        let ping_timeout = std::time::Duration::from_secs(5);
+        let mut consecutive_failures: u32 = 0;
+
         loop {
             tokio::time::sleep(interval).await;
-            let mut guard = child.lock().await;
-            if let Some(ref mut c) = *guard {
-                match c.try_wait() {
-                    Ok(Some(status)) => {
-                        eprintln!("[acp] Heartbeat: process exited (status: {:?}) for workspace {}", status, workspace_id);
-                        *guard = None;
-                        drop(guard);
+
+            {
+                let mut guard = child.lock().await;
+                if let Some(ref mut c) = *guard {
+                    match c.try_wait() {
+                        Ok(Some(status)) => {
+                            eprintln!("[acp] Heartbeat: process exited (status: {:?}) for workspace {}", status, workspace_id);
+                            *guard = None;
+                            drop(guard);
+                            emit_log_raw(&app_handle, &workspace_id, "error", "process_exit", &format!("Process exited with status: {:?}", status));
+                            let event = ConnectionStatusEvent {
+                                workspace_id,
+                                status: "disconnected".to_string(),
+                                attempt: None,
+                            };
+                            let _ = app_handle.emit("acp:connection-status", &event);
+                            return;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            eprintln!("[acp] Heartbeat: try_wait error for workspace {}: {}", workspace_id, e);
+                        }
+                    }
+                } else {
+                    return;
+                }
+            }
+
+            let id = next_id.fetch_add(1, Ordering::SeqCst);
+            let request = JsonRpcRequest::new(id, "ping", None);
+            let line = match serde_json::to_string(&request) {
+                Ok(l) => l + "\n",
+                Err(_) => continue,
+            };
+
+            let (tx, rx) = oneshot::channel();
+            pending.lock().await.insert(id, tx);
+
+            let start = std::time::Instant::now();
+            if writer_tx.send(line).await.is_err() {
+                consecutive_failures += 1;
+                eprintln!("[acp] Heartbeat: writer channel closed for workspace {}", workspace_id);
+                pending.lock().await.remove(&id);
+                if consecutive_failures >= 3 {
+                    let event = ConnectionStatusEvent {
+                        workspace_id,
+                        status: "disconnected".to_string(),
+                        attempt: None,
+                    };
+                    let _ = app_handle.emit("acp:connection-status", &event);
+                    return;
+                }
+                continue;
+            }
+
+            let timestamp = chrono::Utc::now().to_rfc3339();
+            match tokio::time::timeout(ping_timeout, rx).await {
+                Ok(_) => {
+                    let latency = start.elapsed().as_millis() as u64;
+                    consecutive_failures = 0;
+                    let event = HeartbeatEvent {
+                        workspace_id: workspace_id.clone(),
+                        status: "healthy".to_string(),
+                        latency_ms: Some(latency),
+                        timestamp,
+                    };
+                    let _ = app_handle.emit("acp:heartbeat", &event);
+                }
+                Err(_) => {
+                    consecutive_failures += 1;
+                    pending.lock().await.remove(&id);
+                    let event = HeartbeatEvent {
+                        workspace_id: workspace_id.clone(),
+                        status: "degraded".to_string(),
+                        latency_ms: None,
+                        timestamp: timestamp.clone(),
+                    };
+                    let _ = app_handle.emit("acp:heartbeat", &event);
+                    emit_log_raw(&app_handle, &workspace_id, "warn", "ping_timeout", &format!("Ping timeout ({}/3)", consecutive_failures));
+                    if consecutive_failures >= 3 {
+                        emit_log_raw(&app_handle, &workspace_id, "error", "disconnect", "Disconnected after 3 consecutive ping timeouts");
                         let event = ConnectionStatusEvent {
                             workspace_id,
                             status: "disconnected".to_string(),
@@ -196,14 +285,7 @@ impl AcpConnection {
                         let _ = app_handle.emit("acp:connection-status", &event);
                         return;
                     }
-                    Ok(None) => {} // still running
-                    Err(e) => {
-                        eprintln!("[acp] Heartbeat: try_wait error for workspace {}: {}", workspace_id, e);
-                    }
                 }
-            } else {
-                // child was already taken (shutdown called)
-                return;
             }
         }
     }
@@ -245,6 +327,15 @@ impl AcpConnection {
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
+        self.send_request_with_timeout(method, params, std::time::Duration::from_secs(30)).await
+    }
+
+    pub async fn send_request_with_timeout(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let request = JsonRpcRequest::new(id, method, params);
         let line = serde_json::to_string(&request).map_err(|e| e.to_string())? + "\n";
@@ -260,7 +351,7 @@ impl AcpConnection {
             .await
             .map_err(|_| "Writer channel closed".to_string())?;
 
-        let result = tokio::time::timeout(std::time::Duration::from_secs(30), rx)
+        let result = tokio::time::timeout(timeout, rx)
             .await
             .map_err(|_| format!("Timeout waiting for response to {}", method))?
             .map_err(|_| "Response channel dropped".to_string())?;
@@ -329,4 +420,26 @@ impl AcpConnection {
         };
         let _ = self.app_handle.emit("acp:connection-status", &event);
     }
+
+    pub fn emit_log(&self, level: &str, event: &str, message: &str) {
+        let entry = ConnectionLogEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            level: level.to_string(),
+            event: event.to_string(),
+            message: message.to_string(),
+            workspace_id: self.workspace_id.clone(),
+        };
+        let _ = self.app_handle.emit("acp:log", &entry);
+    }
+}
+
+pub fn emit_log_raw(app_handle: &AppHandle, workspace_id: &str, level: &str, event: &str, message: &str) {
+    let entry = ConnectionLogEntry {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        level: level.to_string(),
+        event: event.to_string(),
+        message: message.to_string(),
+        workspace_id: workspace_id.to_string(),
+    };
+    let _ = app_handle.emit("acp:log", &entry);
 }
