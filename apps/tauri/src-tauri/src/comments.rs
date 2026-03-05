@@ -153,6 +153,20 @@ pub fn delete_comments_for_file(conn: &Connection, file_path: &str) -> Result<()
     Ok(())
 }
 
+pub fn delete_comments_for_workspace(conn: &Connection, workspace_path: &str) -> Result<(), String> {
+    let pattern = format!("{}/%", workspace_path);
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Transaction error: {}", e))?;
+    tx.execute("DELETE FROM comments WHERE file_path LIKE ?1", params![pattern])
+        .map_err(|e| format!("Delete comments error: {}", e))?;
+    tx.execute("DELETE FROM file_hashes WHERE file_path LIKE ?1", params![pattern])
+        .map_err(|e| format!("Delete file_hashes error: {}", e))?;
+    tx.commit()
+        .map_err(|e| format!("Commit error: {}", e))?;
+    Ok(())
+}
+
 pub fn count_unresolved_batch(conn: &Connection, file_paths: &[String]) -> Result<Vec<(String, i64)>, String> {
     let mut results = Vec::with_capacity(file_paths.len());
     let mut stmt = conn

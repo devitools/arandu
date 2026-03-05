@@ -85,10 +85,19 @@ describe('WorkspaceCard', () => {
     expect(onForget).toHaveBeenCalledWith('2');
   });
 
-  it('does not show forget button for file workspaces', () => {
-    render(<WorkspaceCard {...defaultProps} />);
+  it('shows forget button for file workspaces', async () => {
+    const user = userEvent.setup();
+    const onForget = vi.fn();
 
-    expect(screen.queryByTitle('Esquecer')).not.toBeInTheDocument();
+    render(<WorkspaceCard {...defaultProps} onForget={onForget} />);
+
+    const forgetButton = screen.getByTitle('Esquecer');
+    await user.click(forgetButton);
+
+    const confirmButton = await screen.findByRole('button', { name: 'Esquecer' });
+    await user.click(confirmButton);
+
+    expect(onForget).toHaveBeenCalledWith('1');
   });
 
   it('prevents card expansion when close button is clicked', async () => {

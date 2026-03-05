@@ -323,6 +323,7 @@ pub fn forget_workspace_data(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     if workspace_type == "directory" {
+        crate::comments::delete_comments_for_workspace(&conn, &workspace_path)?;
         let session_ids = delete_workspace_sessions(&conn, &workspace_path)?;
         let app_data = app.path().app_data_dir()
             .map_err(|e| format!("Failed to get app data dir: {}", e))?;
