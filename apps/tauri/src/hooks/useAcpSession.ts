@@ -183,11 +183,29 @@ export function useAcpSession(
           text,
         });
       } catch (e) {
-        setErrors((prev) => [...prev, String(e)]);
+        const err = String(e);
+        if (err.includes("not found") || err.includes("-32602")) {
+          try {
+            await invoke("acp_load_session", {
+              workspaceId,
+              sessionId: sid,
+              cwd: workspacePath,
+            });
+            await invoke("acp_send_prompt", {
+              workspaceId,
+              sessionId: sid,
+              text,
+            });
+            return;
+          } catch {
+            // reload failed — fall through to show original error
+          }
+        }
+        setErrors((prev) => [...prev, err]);
         updateSessionEntry(workspaceId, { isStreaming: false });
       }
     },
-    [workspaceId]
+    [workspaceId, workspacePath]
   );
 
   const setMode = useCallback(

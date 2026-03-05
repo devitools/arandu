@@ -119,7 +119,11 @@ export function ActiveSessionView({
   }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, acp.startSession, plan.startPlanning]);
 
   useEffect(() => {
-    if (!isConnected || initRef.current) return;
+    if (!isConnected) {
+      initRef.current = false;
+      return;
+    }
+    if (initRef.current) return;
     initRef.current = true;
     doInit();
   }, [isConnected]);
