@@ -9,7 +9,7 @@ import { MarkdownViewer } from "./MarkdownViewer";
 import { useAcpSession } from "@/hooks/useAcpSession";
 import { useAcpLogs } from "@/hooks/useAcpLogs";
 import { usePlanWorkflow } from "@/hooks/usePlanWorkflow";
-import { ConnectionLogs } from "./ConnectionLogs";
+import { ConnectionLogs } from "@/components/ConnectionLogs";
 import type { SessionRecord, PlanPhase } from "@/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -119,6 +119,10 @@ export function ActiveSessionView({
   }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, acp.startSession, plan.startPlanning]);
 
   useEffect(() => {
+    initRef.current = false;
+  }, [session.id, session.acp_session_id]);
+
+  useEffect(() => {
     if (!isConnected) {
       initRef.current = false;
       return;
@@ -126,7 +130,7 @@ export function ActiveSessionView({
     if (initRef.current) return;
     initRef.current = true;
     doInit();
-  }, [isConnected]);
+  }, [isConnected, session.id, session.acp_session_id]);
 
   const handleReconnect = useCallback(async () => {
     initRef.current = false;
