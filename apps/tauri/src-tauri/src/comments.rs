@@ -140,6 +140,14 @@ pub fn save_comments(
     Ok(())
 }
 
+pub fn delete_comments_for_file(conn: &Connection, file_path: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM comments WHERE file_path = ?1", params![file_path])
+        .map_err(|e| format!("Delete comments error: {}", e))?;
+    conn.execute("DELETE FROM file_hashes WHERE file_path = ?1", params![file_path])
+        .map_err(|e| format!("Delete file_hashes error: {}", e))?;
+    Ok(())
+}
+
 pub fn count_unresolved_batch(conn: &Connection, file_paths: &[String]) -> Result<Vec<(String, i64)>, String> {
     let mut results = Vec::with_capacity(file_paths.len());
     let mut stmt = conn

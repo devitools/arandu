@@ -201,6 +201,22 @@ pub fn count_sessions_batch(conn: &Connection, workspace_paths: &[String]) -> Re
     Ok(results)
 }
 
+pub fn delete_workspace_sessions(conn: &Connection, workspace_path: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id FROM sessions WHERE workspace_path = ?1")
+        .map_err(|e| format!("Query error: {}", e))?;
+    let ids: Vec<String> = stmt
+        .query_map(params![workspace_path], |row| row.get(0))
+        .map_err(|e| format!("Query error: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Row error: {}", e))?;
+
+    conn.execute("DELETE FROM sessions WHERE workspace_path = ?1", params![workspace_path])
+        .map_err(|e| format!("Delete error: {}", e))?;
+
+    Ok(ids)
+}
+
 // --- Tauri commands ---
 
 use crate::comments::CommentsDb;
@@ -295,4 +311,27 @@ pub fn session_delete(
     let app_data = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
     crate::plan_file::delete_plan(&app_data, &id)
+}
+
+#[tauri::command]
+pub fn forget_workspace_data(
+    workspace_path: String,
+    workspace_type: String,
+    db: tauri::State<CommentsDb>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    if workspace_type == "directory" {
+        let session_ids = delete_workspace_sessions(&conn, &workspace_path)?;
+        let app_data = app.path().app_data_dir()
+            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+        for id in &session_ids {
+            let _ = crate::plan_file::delete_plan(&app_data, id);
+        }
+    } else {
+        crate::comments::delete_comments_for_file(&conn, &workspace_path)?;
+    }
+
+    Ok(())
 }
