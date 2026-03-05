@@ -185,7 +185,6 @@ function notifySubscribers(workspaceId: string, entry: SessionEntry) {
 let listenerSetup = false;
 function ensureGlobalListener() {
   if (listenerSetup) return;
-  listenerSetup = true;
 
   window.__TAURI__.event.listen<AcpSessionUpdate>("acp:session-update", (event: { payload: AcpSessionUpdate }) => {
     const update = event.payload;
@@ -203,6 +202,8 @@ function ensureGlobalListener() {
     } else {
       clearStreamingTimer(workspaceId);
     }
+  }).then(() => {
+    listenerSetup = true;
   }).catch(console.error);
 }
 
@@ -238,4 +239,5 @@ export function addUserMessage(workspaceId: string, text: string) {
   };
   sessions.set(workspaceId, newEntry);
   notifySubscribers(workspaceId, newEntry);
+  resetStreamingTimer(workspaceId);
 }
