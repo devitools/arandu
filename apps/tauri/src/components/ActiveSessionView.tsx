@@ -131,12 +131,12 @@ export function ActiveSessionView({
   const handleReconnect = useCallback(async () => {
     initRef.current = false;
     setInitError(null);
-    if (onDisconnect) {
-      await onDisconnect();
+    try {
+      if (onDisconnect) await onDisconnect();
+    } catch (e) {
+      console.warn("[ActiveSessionView] disconnect during reconnect failed:", e);
     }
-    if (onConnect) {
-      await onConnect();
-    }
+    if (onConnect) await onConnect();
   }, [onDisconnect, onConnect]);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
