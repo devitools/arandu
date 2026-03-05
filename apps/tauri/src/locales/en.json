@@ -5,7 +5,8 @@
     "minimize": "Minimize",
     "loading": "Loading...",
     "reload": "Reload",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "dismiss": "Dismiss"
   },
   "home": {
     "tagline": "Intelligent development companion",

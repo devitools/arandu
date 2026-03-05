@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, X } from "lucide-react";
 
 interface ErrorConsoleProps {
@@ -6,6 +8,7 @@ interface ErrorConsoleProps {
 }
 
 export function ErrorConsole ({ errors, onClear }: ErrorConsoleProps) {
+  const { t } = useTranslation();
   if (errors.length === 0) return null;
 
   const lastError = errors[errors.length - 1];
@@ -19,13 +22,15 @@ export function ErrorConsole ({ errors, onClear }: ErrorConsoleProps) {
           <span className="ml-2 text-foreground/40">(+{errors.length - 1})</span>
         )}
       </p>
-      <button
-        onClick={onClear}
-        className="shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
-        aria-label="Dismiss"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClear}
+          className="h-6 w-6 shrink-0 text-muted-foreground/40 hover:text-foreground"
+          aria-label={t("common.dismiss")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
     </div>
   );
 }

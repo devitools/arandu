@@ -5,7 +5,8 @@
     "minimize": "Minimizar",
     "loading": "Carregando...",
     "reload": "Recarregar",
-    "tryAgain": "Tentar Novamente"
+    "tryAgain": "Tentar Novamente",
+    "dismiss": "Dispensar"
   },
   "home": {
     "tagline": "Seu parceiro inteligente no desenvolvimento de software",
