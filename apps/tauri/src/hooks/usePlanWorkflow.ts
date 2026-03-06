@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PlanPhase } from "@/types";
+import type { AcpSessionMode } from "@/types/acp";
 
 interface UsePlanWorkflowReturn {
   phase: PlanPhase;
@@ -20,9 +21,13 @@ interface UsePlanWorkflowParams {
   sessionPlanFilePath: string | null;
   agentPlanFilePath: string | null;
   isStreaming: boolean;
-  availableModes: string[];
+  availableModes: AcpSessionMode[];
   sendPrompt: (text: string) => Promise<void>;
-  setMode: (mode: string) => Promise<void>;
+  setMode: (
+    mode: string,
+    options?: { origin?: "user" | "workflow" }
+  ) => Promise<boolean>;
+  onAutoSwitchMode?: (modeId: string) => void;
   onPhaseChange?: (phase: PlanPhase) => void;
 }
 
@@ -37,6 +42,7 @@ export function usePlanWorkflow({
   availableModes,
   sendPrompt,
   setMode,
+  onAutoSwitchMode,
   onPhaseChange,
 }: UsePlanWorkflowParams): UsePlanWorkflowReturn {
   const [phase, setPhaseRaw] = useState<PlanPhase>(initialPhase ?? "idle");
@@ -85,7 +91,10 @@ export function usePlanWorkflow({
     async (sessionId: string, prompt: string) => {
       const planMode = findModeBySlug(availableModesRef.current, "plan");
       if (planMode) {
-        await setModeRef.current(planMode);
+        const switched = await setModeRef.current(planMode, { origin: "workflow" });
+        if (switched) {
+          onAutoSwitchMode?.(planMode);
+        }
       }
 
       setPhase("planning");
@@ -98,7 +107,7 @@ export function usePlanWorkflow({
 
       await sendPromptRef.current(prompt);
     },
-    [workspaceId, localSessionId]
+    [workspaceId, localSessionId, onAutoSwitchMode]
   );
 
   const approvePlan = useCallback(
@@ -107,7 +116,10 @@ export function usePlanWorkflow({
 
       const agentMode = findModeBySlug(availableModesRef.current, "agent");
       if (agentMode) {
-        await setModeRef.current(agentMode);
+        const switched = await setModeRef.current(agentMode, { origin: "workflow" });
+        if (switched) {
+          onAutoSwitchMode?.(agentMode);
+        }
       }
 
       setPhase("executing");
@@ -124,7 +136,7 @@ export function usePlanWorkflow({
 
       await sendPromptRef.current(prompt);
     },
-    [workspaceId, acpSessionId, activeSessionId, localSessionId]
+    [workspaceId, acpSessionId, activeSessionId, localSessionId, onAutoSwitchMode]
   );
 
   const requestChanges = useCallback(
@@ -155,13 +167,12 @@ export function usePlanWorkflow({
   };
 }
 
-function findModeBySlug(
-  availableModes: string[],
-  slug: string
-): string | null {
+function findModeBySlug(availableModes: AcpSessionMode[], slug: string): string | null {
+  const slugLower = slug.toLowerCase();
   return (
-    availableModes.find((id) => id.endsWith(`#${slug}`)) ??
-    availableModes.find((id) => id.includes(slug)) ??
+    availableModes.find((mode) => mode.id.endsWith(`#${slugLower}`))?.id ??
+    availableModes.find((mode) => mode.id.toLowerCase().includes(slugLower))?.id ??
+    availableModes.find((mode) => mode.name?.toLowerCase().includes(slugLower))?.id ??
     null
   );
 }

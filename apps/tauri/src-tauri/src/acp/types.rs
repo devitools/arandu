@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize)]
 pub struct JsonRpcRequest {
@@ -86,6 +87,14 @@ pub struct SetSessionModeParams {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetConfigOptionParams {
+    pub session_id: String,
+    pub config_id: String,
+    pub value: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListSessionsParams {
     pub cwd: String,
 }
@@ -102,6 +111,7 @@ pub struct SessionInfo {
     #[serde(default)]
     pub session_id: String,
     pub modes: Option<SessionModeState>,
+    pub config_options: Option<SessionConfigOptionsState>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -117,6 +127,38 @@ pub struct SessionModeState {
 pub struct SessionMode {
     pub id: String,
     pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOptionsState {
+    #[serde(default)]
+    pub available_config_options: Vec<SessionConfigOption>,
+    #[serde(default)]
+    pub selected_config_options: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOption {
+    pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    #[serde(rename = "type")]
+    pub option_type: Option<String>,
+    #[serde(default)]
+    pub options: Vec<SessionConfigOptionValue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOptionValue {
+    pub id: Option<String>,
+    pub value: Option<String>,
+    pub name: Option<String>,
+    pub label: Option<String>,
     pub description: Option<String>,
 }
 
@@ -172,4 +214,23 @@ pub struct ConnectionConfig {
     pub binary: String,
     pub cwd: String,
     pub gh_token: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_config_option_params_serializes_option_id_as_value() {
+        let params = SetConfigOptionParams {
+            session_id: "s-1".to_string(),
+            config_id: "model".to_string(),
+            value: "claude-sonnet".to_string(),
+        };
+
+        let value = serde_json::to_value(params).expect("serialize SetConfigOptionParams");
+        assert_eq!(value["sessionId"], "s-1");
+        assert_eq!(value["configId"], "model");
+        assert_eq!(value["value"], "claude-sonnet");
+    }
 }

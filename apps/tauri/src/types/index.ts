@@ -57,6 +57,7 @@ export interface SessionRecord {
   id: string;
   workspace_path: string;
   acp_session_id: string | null;
+  acp_preferences_json: string;
   name: string;
   initial_prompt: string;
   plan_markdown: string;

@@ -102,7 +102,14 @@
     "modeCode": "Código",
     "modeAutopilot": "Autopilot",
     "modeAgent": "Agente",
-    "modeEdit": "Editar"
+    "modeEdit": "Editar",
+    "modeLabel": "Modo",
+    "modelLabel": "Modelo",
+    "agentLabel": "Agente",
+    "advancedLabel": "Avançado",
+    "advancedAvailable": "{{count}} disponíveis",
+    "unavailableFromAcp": "Indisponível no ACP",
+    "autoSwitchNotice": "Modo alterado automaticamente para {{mode}}."
   },
   "whisper": {
     "recordTooltip": "Voz para texto",
