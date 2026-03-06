@@ -10,6 +10,7 @@ import { useAcpSession } from "@/hooks/useAcpSession";
 import { useAcpLogs } from "@/hooks/useAcpLogs";
 import { usePlanWorkflow } from "@/hooks/usePlanWorkflow";
 import { ConnectionLogs } from "@/components/ConnectionLogs";
+import { AcpSessionControls } from "@/components/AcpSessionControls";
 import type { SessionRecord, PlanPhase } from "@/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -70,9 +71,37 @@ export function ActiveSessionView({
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [planCollapsed, setPlanCollapsed] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const { t } = useTranslation();
 
-  const acp = useAcpSession(workspaceId, workspacePath, isConnected);
+  const acp = useAcpSession(workspaceId, workspacePath, session.id, isConnected);
   const acpLogs = useAcpLogs(workspaceId);
+
+  const getModeLabel = useCallback((modeId: string) => {
+    const mode = acp.availableModes.find((m) => m.id === modeId);
+    if (mode?.name?.trim()) return mode.name;
+
+    const slug = (modeId.split("#").pop() ?? modeId.split("/").pop() ?? modeId).toLowerCase();
+    switch (slug) {
+      case "ask":
+        return t("acp.modeAsk");
+      case "plan":
+        return t("acp.modePlan");
+      case "code":
+        return t("acp.modeCode");
+      case "autopilot":
+        return t("acp.modeAutopilot");
+      case "agent":
+        return t("acp.modeAgent");
+      case "edit":
+        return t("acp.modeEdit");
+      default:
+        return modeId;
+    }
+  }, [acp.availableModes, t]);
+
+  const handleAutoSwitchMode = useCallback((modeId: string) => {
+    acp.appendNotice(t("acp.autoSwitchNotice", { mode: getModeLabel(modeId) }));
+  }, [acp.appendNotice, getModeLabel, t]);
 
   const plan = usePlanWorkflow({
     workspaceId,
@@ -86,6 +115,7 @@ export function ActiveSessionView({
     availableModes: acp.availableModes,
     sendPrompt: acp.sendPrompt,
     setMode: acp.setMode,
+    onAutoSwitchMode: handleAutoSwitchMode,
     onPhaseChange: onPhaseChange
       ? (phase) => onPhaseChange(session.id, phase)
       : undefined,
@@ -162,7 +192,6 @@ export function ActiveSessionView({
     return 60;
   }, [session.id]);
 
-  const { t } = useTranslation();
   const currentPhase = plan.phase ?? session.phase;
 
   const handleToggleChat = useCallback(() => {
@@ -238,6 +267,19 @@ export function ActiveSessionView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <AcpSessionControls
+            disabled={!isConnected || acp.isStreaming}
+            currentModeId={acp.currentMode}
+            availableModes={acp.availableModes}
+            configOptions={acp.availableConfigOptions}
+            selectedConfigOptions={acp.selectedConfigOptions}
+            onSelectMode={(modeId) => {
+              void acp.setMode(modeId, { origin: "user" });
+            }}
+            onSelectConfigOption={(configId, optionId) => {
+              void acp.setConfigOption(configId, optionId);
+            }}
+          />
           {isConnecting ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />

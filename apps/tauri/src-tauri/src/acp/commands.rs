@@ -1,6 +1,6 @@
 use std::collections::HashMap;
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
-use tauri::{AppHandle, State, Emitter};
 
 use super::connection::AcpConnection;
 use super::types::*;
@@ -34,7 +34,11 @@ pub async fn acp_connect(
     };
     if let Some(existing) = existing {
         if existing.is_alive().await {
-            state.connections.lock().await.insert(workspace_id.clone(), existing);
+            state
+                .connections
+                .lock()
+                .await
+                .insert(workspace_id.clone(), existing);
             return Ok(());
         }
         existing.shutdown().await;
@@ -51,11 +55,14 @@ pub async fn acp_connect(
         gh_token: gh_token.clone(),
     };
 
-    let _ = app_handle.emit("acp:connection-status", &ConnectionStatusEvent {
-        workspace_id: workspace_id.clone(),
-        status: "connecting".to_string(),
-        attempt: None,
-    });
+    let _ = app_handle.emit(
+        "acp:connection-status",
+        &ConnectionStatusEvent {
+            workspace_id: workspace_id.clone(),
+            status: "connecting".to_string(),
+            attempt: None,
+        },
+    );
 
     let conn = AcpConnection::spawn(
         &binary,
@@ -82,7 +89,11 @@ pub async fn acp_connect(
     conn.emit_status("connected", None);
     conn.emit_log("info", "connect", &format!("Connected via {}", binary));
 
-    state.configs.lock().await.insert(workspace_id.clone(), config);
+    state
+        .configs
+        .lock()
+        .await
+        .insert(workspace_id.clone(), config);
     state.connections.lock().await.insert(workspace_id, conn);
     Ok(())
 }
@@ -108,9 +119,7 @@ pub async fn acp_new_session(
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = NewSessionParams {
         cwd,
@@ -136,9 +145,7 @@ pub async fn acp_list_sessions(
     state: State<'_, AcpState>,
 ) -> Result<Vec<SessionSummary>, String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = ListSessionsParams { cwd };
 
@@ -166,9 +173,7 @@ pub async fn acp_load_session(
     state: State<'_, AcpState>,
 ) -> Result<SessionInfo, String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = LoadSessionParams {
         session_id: session_id.clone(),
@@ -200,9 +205,7 @@ pub async fn acp_send_prompt(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = PromptParams {
         session_id,
@@ -230,9 +233,7 @@ pub async fn acp_set_mode(
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = SetSessionModeParams {
         session_id,
@@ -249,15 +250,49 @@ pub async fn acp_set_mode(
 }
 
 #[tauri::command]
+pub async fn acp_set_config_option(
+    workspace_id: String,
+    session_id: String,
+    config_id: String,
+    option_id: String,
+    state: State<'_, AcpState>,
+) -> Result<(), String> {
+    acp_set_config_option_inner(&state, &workspace_id, &session_id, &config_id, &option_id).await
+}
+
+async fn acp_set_config_option_inner(
+    state: &AcpState,
+    workspace_id: &str,
+    session_id: &str,
+    config_id: &str,
+    option_id: &str,
+) -> Result<(), String> {
+    let connections = state.connections.lock().await;
+    let conn = connections.get(workspace_id).ok_or("Not connected")?;
+
+    let params = SetConfigOptionParams {
+        session_id: session_id.to_string(),
+        config_id: config_id.to_string(),
+        value: option_id.to_string(),
+    };
+
+    conn.send_request(
+        "session/set_config_option",
+        Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn acp_cancel(
     workspace_id: String,
     session_id: String,
     state: State<'_, AcpState>,
 ) -> Result<(), String> {
     let connections = state.connections.lock().await;
-    let conn = connections
-        .get(&workspace_id)
-        .ok_or("Not connected")?;
+    let conn = connections.get(&workspace_id).ok_or("Not connected")?;
 
     let params = CancelParams { session_id };
 
@@ -283,7 +318,11 @@ pub async fn acp_check_health(
     let status = if let Some(conn) = existing {
         if conn.is_alive().await {
             conn.emit_status("connected", None);
-            state.connections.lock().await.insert(workspace_id.clone(), conn);
+            state
+                .connections
+                .lock()
+                .await
+                .insert(workspace_id.clone(), conn);
             "connected"
         } else {
             conn.emit_status("disconnected", None);
@@ -309,5 +348,19 @@ pub async fn disconnect_all(state: &AcpState) {
     for (id, conn) in connections.drain() {
         eprintln!("[acp] Disconnecting workspace {}", id);
         conn.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_config_option_returns_not_connected_when_workspace_missing() {
+        let state = AcpState::default();
+        let result = tauri::async_runtime::block_on(async {
+            acp_set_config_option_inner(&state, "ws-1", "s-1", "model", "sonnet").await
+        });
+        assert_eq!(result.unwrap_err(), "Not connected");
     }
 }

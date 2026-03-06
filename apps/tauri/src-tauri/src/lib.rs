@@ -14,11 +14,11 @@ mod acp;
 mod cli_installer;
 mod comments;
 mod history;
-mod plan_file;
-mod sessions;
-mod ipc_common;
 #[cfg(unix)]
 mod ipc;
+mod ipc_common;
+mod plan_file;
+mod sessions;
 mod tcp_ipc;
 mod tray;
 mod whisper;
@@ -131,9 +131,13 @@ fn create_file_watcher(app: tauri::AppHandle) -> Result<notify::RecommendedWatch
 }
 
 #[tauri::command]
-fn watch_file(path: String, app: tauri::AppHandle, state: tauri::State<WatcherState>) -> Result<(), String> {
-    let canonical = std::fs::canonicalize(&path)
-        .map_err(|e| format!("Erro ao canonicalizar: {}", e))?;
+fn watch_file(
+    path: String,
+    app: tauri::AppHandle,
+    state: tauri::State<WatcherState>,
+) -> Result<(), String> {
+    let canonical =
+        std::fs::canonicalize(&path).map_err(|e| format!("Erro ao canonicalizar: {}", e))?;
 
     let mut watched = state.watched_paths.lock().map_err(|e| e.to_string())?;
 
@@ -147,7 +151,8 @@ fn watch_file(path: String, app: tauri::AppHandle, state: tauri::State<WatcherSt
         *guard = Some(create_file_watcher(app.clone())?);
     }
 
-    guard.as_mut()
+    guard
+        .as_mut()
         .unwrap()
         .watch(&canonical, RecursiveMode::NonRecursive)
         .map_err(|e| format!("Erro ao observar arquivo: {}", e))?;
@@ -158,8 +163,8 @@ fn watch_file(path: String, app: tauri::AppHandle, state: tauri::State<WatcherSt
 
 #[tauri::command]
 fn unwatch_file(path: String, state: tauri::State<WatcherState>) -> Result<(), String> {
-    let canonical = std::fs::canonicalize(&path)
-        .map_err(|e| format!("Arquivo não encontrado: {}", e))?;
+    let canonical =
+        std::fs::canonicalize(&path).map_err(|e| format!("Arquivo não encontrado: {}", e))?;
 
     let mut watched = state.watched_paths.lock().map_err(|e| e.to_string())?;
 
@@ -180,7 +185,9 @@ fn get_initial_file(state: tauri::State<InitialFile>) -> Option<String> {
 
 #[tauri::command]
 fn get_home_dir() -> Option<String> {
-    std::env::var("HOME").ok().or_else(|| std::env::var("USERPROFILE").ok())
+    std::env::var("HOME")
+        .ok()
+        .or_else(|| std::env::var("USERPROFILE").ok())
 }
 
 #[tauri::command]
@@ -255,7 +262,10 @@ pub struct DiagnosticsResult {
     acp_stderr: Option<String>,
 }
 
-async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Option<u64>, Option<String>, String, Option<String>) {
+async fn test_acp_connection(
+    binary: &str,
+    gh_token: Option<&str>,
+) -> (bool, Option<u64>, Option<String>, String, Option<String>) {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let timeout = std::time::Duration::from_secs(10);
@@ -276,23 +286,53 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return (false, None, Some(format!("spawn failed: {}", e)), command_str, None),
+        Err(e) => {
+            return (
+                false,
+                None,
+                Some(format!("spawn failed: {}", e)),
+                command_str,
+                None,
+            )
+        }
     };
 
     let mut stdin = match child.stdin.take() {
         Some(s) => s,
-        None => return (false, None, Some("failed to capture stdin".to_string()), command_str, None),
+        None => {
+            return (
+                false,
+                None,
+                Some("failed to capture stdin".to_string()),
+                command_str,
+                None,
+            )
+        }
     };
     let stdout = match child.stdout.take() {
         Some(s) => s,
-        None => return (false, None, Some("failed to capture stdout".to_string()), command_str, None),
+        None => {
+            return (
+                false,
+                None,
+                Some("failed to capture stdout".to_string()),
+                command_str,
+                None,
+            )
+        }
     };
     let stderr = child.stderr.take();
 
     let init_msg = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}"# .to_string() + "\n";
 
     if let Err(e) = stdin.write_all(init_msg.as_bytes()).await {
-        return (false, None, Some(format!("write failed: {}", e)), command_str, None);
+        return (
+            false,
+            None,
+            Some(format!("write failed: {}", e)),
+            command_str,
+            None,
+        );
     }
     let _ = stdin.flush().await;
 
@@ -301,19 +341,21 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
         if let Some(s) = stderr {
             let mut reader = BufReader::new(s);
             let mut buf = String::new();
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                async {
-                    loop {
-                        let mut line = String::new();
-                        match reader.read_line(&mut line).await {
-                            Ok(0) | Err(_) => break,
-                            Ok(_) => buf.push_str(&line),
-                        }
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    let mut line = String::new();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => buf.push_str(&line),
                     }
                 }
-            ).await;
-            if buf.is_empty() { None } else { Some(buf.trim().to_string()) }
+            })
+            .await;
+            if buf.is_empty() {
+                None
+            } else {
+                Some(buf.trim().to_string())
+            }
         } else {
             None
         }
@@ -324,7 +366,9 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim().to_string();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                 if v.get("id").and_then(|i| i.as_u64()) == Some(1) {
                     if v.get("error").is_some() {
@@ -342,31 +386,50 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
         Ok(Ok(())) => {
             let _ = child.kill().await;
             let stderr_out = stderr_task.await.ok().flatten();
-            (true, Some(start.elapsed().as_millis() as u64), None, command_str, stderr_out)
+            (
+                true,
+                Some(start.elapsed().as_millis() as u64),
+                None,
+                command_str,
+                stderr_out,
+            )
         }
         Ok(Err(e)) => {
             let _ = child.kill().await;
             let stderr_out = stderr_task.await.ok().flatten();
-            (false, Some(start.elapsed().as_millis() as u64), Some(e), command_str, stderr_out)
+            (
+                false,
+                Some(start.elapsed().as_millis() as u64),
+                Some(e),
+                command_str,
+                stderr_out,
+            )
         }
         Err(_) => {
             let _ = child.kill().await;
             let stderr_out = stderr_task.await.ok().flatten();
-            (false, Some(start.elapsed().as_millis() as u64), Some("timeout after 10s — binary may be waiting for auth or network".to_string()), command_str, stderr_out)
+            (
+                false,
+                Some(start.elapsed().as_millis() as u64),
+                Some("timeout after 10s — binary may be waiting for auth or network".to_string()),
+                command_str,
+                stderr_out,
+            )
         }
     }
 }
 
 #[tauri::command]
-async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) -> DiagnosticsResult {
+async fn run_diagnostics(
+    binary_path: Option<String>,
+    gh_token: Option<String>,
+) -> DiagnosticsResult {
     let binary = binary_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string())
-        });
+        .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
 
     let platform = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
@@ -416,7 +479,13 @@ async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) 
         let token_ref = gh_token.as_deref();
         test_acp_connection(&binary, token_ref).await
     } else {
-        (false, None, Some("binary not found — skipping ACP test".to_string()), format!("{} --acp --stdio", binary), None)
+        (
+            false,
+            None,
+            Some("binary not found — skipping ACP test".to_string()),
+            format!("{} --acp --stdio", binary),
+            None,
+        )
     };
 
     DiagnosticsResult {
@@ -508,9 +577,8 @@ fn count_unresolved_comments(
 
 #[tauri::command]
 fn hash_file(path: String) -> Result<String, String> {
-    use sha2::{Sha256, Digest};
-    let content = std::fs::read(&path)
-        .map_err(|e| format!("Read error: {}", e))?;
+    use sha2::{Digest, Sha256};
+    let content = std::fs::read(&path).map_err(|e| format!("Read error: {}", e))?;
     let hash = Sha256::digest(&content);
     Ok(format!("{:x}", hash))
 }
@@ -637,8 +705,7 @@ fn rebuild_macos_menu(
     let settings_item = MenuItemBuilder::with_id("settings", settings)
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
-    let install_cli_item = MenuItemBuilder::with_id("install-cli", install_cli)
-        .build(app)?;
+    let install_cli_item = MenuItemBuilder::with_id("install-cli", install_cli).build(app)?;
     let open_file_item = MenuItemBuilder::with_id("open-file", open_file)
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
@@ -701,22 +768,20 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     )?;
 
     let app_handle = app.handle().clone();
-    app.on_menu_event(move |_app, event| {
-        match event.id().as_ref() {
-            "settings" => {
-                if let Some(window) = app_handle.get_webview_window("settings") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+    app.on_menu_event(move |_app, event| match event.id().as_ref() {
+        "settings" => {
+            if let Some(window) = app_handle.get_webview_window("settings") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
-            "install-cli" => {
-                let _ = app_handle.emit("menu-install-cli", ());
-            }
-            "open-file" => {
-                let _ = app_handle.emit("menu-open-file", ());
-            }
-            _ => {}
         }
+        "install-cli" => {
+            let _ = app_handle.emit("menu-install-cli", ());
+        }
+        "open-file" => {
+            let _ = app_handle.emit("menu-open-file", ());
+        }
+        _ => {}
     });
 
     Ok(())
@@ -736,10 +801,10 @@ pub fn run() {
                 .with_denylist(&["whisper", "settings"])
                 .with_state_flags(
                     tauri_plugin_window_state::StateFlags::SIZE
-                    | tauri_plugin_window_state::StateFlags::POSITION
-                    | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
                 )
-                .build()
+                .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             eprintln!("[DEBUG] Second instance detected: {:?}", args);
@@ -824,10 +889,12 @@ pub fn run() {
                 eprintln!("Failed to setup TCP IPC: {}", e);
             }
 
-            let app_data = app.path().app_data_dir()
+            let app_data = app
+                .path()
+                .app_data_dir()
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-            let conn = comments::init_db(&app_data)
-                .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+            let conn =
+                comments::init_db(&app_data).map_err(|e| Box::<dyn std::error::Error>::from(e))?;
             sessions::init_sessions_table(&conn)
                 .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
             app.manage(comments::CommentsDb(Mutex::new(conn)));
@@ -841,20 +908,29 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
-            let register = app.global_shortcut().on_shortcut(shortcut_str.as_str(), move |_app, _shortcut, event| {
-                if let ShortcutState::Pressed = event.state {
-                    handle_recording_toggle(&handle);
-                }
-            });
-
-            if let Err(e) = register {
-                eprintln!("Invalid shortcut '{}': {e}. Falling back to default.", shortcut_str);
-                let handle = app.handle().clone();
-                if let Err(e) = app.global_shortcut().on_shortcut(whisper::model_manager::DEFAULT_SHORTCUT, move |_app, _shortcut, event| {
+            let register = app.global_shortcut().on_shortcut(
+                shortcut_str.as_str(),
+                move |_app, _shortcut, event| {
                     if let ShortcutState::Pressed = event.state {
                         handle_recording_toggle(&handle);
                     }
-                }) {
+                },
+            );
+
+            if let Err(e) = register {
+                eprintln!(
+                    "Invalid shortcut '{}': {e}. Falling back to default.",
+                    shortcut_str
+                );
+                let handle = app.handle().clone();
+                if let Err(e) = app.global_shortcut().on_shortcut(
+                    whisper::model_manager::DEFAULT_SHORTCUT,
+                    move |_app, _shortcut, event| {
+                        if let ShortcutState::Pressed = event.state {
+                            handle_recording_toggle(&handle);
+                        }
+                    },
+                ) {
                     eprintln!("Failed to register default shortcut: {e}");
                 }
             }
@@ -867,21 +943,30 @@ pub fn run() {
             };
 
             let cancel_handle = app.handle().clone();
-            if let Err(e) = app.global_shortcut().on_shortcut(cancel_shortcut_str.as_str(), move |_app, _shortcut, event| {
-                if let ShortcutState::Pressed = event.state {
-                    handle_recording_cancel(&cancel_handle);
-                }
-            }) {
-                eprintln!("Failed to register cancel shortcut '{}': {e}", cancel_shortcut_str);
+            if let Err(e) = app.global_shortcut().on_shortcut(
+                cancel_shortcut_str.as_str(),
+                move |_app, _shortcut, event| {
+                    if let ShortcutState::Pressed = event.state {
+                        handle_recording_cancel(&cancel_handle);
+                    }
+                },
+            ) {
+                eprintln!(
+                    "Failed to register cancel shortcut '{}': {e}",
+                    cancel_shortcut_str
+                );
             }
 
             // Auto-load saved whisper model
             if let Ok(app_data_dir) = app.path().app_data_dir() {
                 let settings = whisper::model_manager::load_settings(&app_data_dir);
                 if let Some(model_id) = &settings.active_model {
-                    if let Some(path) = whisper::model_manager::model_path(&app_data_dir, model_id) {
+                    if let Some(path) = whisper::model_manager::model_path(&app_data_dir, model_id)
+                    {
                         if path.exists() {
-                            if let Ok(transcriber) = whisper::transcriber::WhisperTranscriber::new(&path.to_string_lossy()) {
+                            if let Ok(transcriber) = whisper::transcriber::WhisperTranscriber::new(
+                                &path.to_string_lossy(),
+                            ) {
                                 let state = app.state::<whisper::commands::TranscriberState>();
                                 let mut guard = state.0.lock().unwrap();
                                 *guard = Some(transcriber);
@@ -972,6 +1057,7 @@ pub fn run() {
             acp::commands::acp_load_session,
             acp::commands::acp_send_prompt,
             acp::commands::acp_set_mode,
+            acp::commands::acp_set_config_option,
             acp::commands::acp_cancel,
             acp::commands::acp_check_health,
             sessions::count_workspace_sessions,
@@ -979,6 +1065,9 @@ pub fn run() {
             sessions::session_create,
             sessions::session_get,
             sessions::session_update_acp_id,
+            sessions::session_update_acp_preferences,
+            sessions::workspace_acp_defaults_get,
+            sessions::workspace_acp_defaults_set,
             sessions::session_update_plan,
             sessions::session_update_plan_file_path,
             sessions::session_update_phase,

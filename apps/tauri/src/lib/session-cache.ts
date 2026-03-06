@@ -1,4 +1,9 @@
-import type { AcpMessage, AcpSessionUpdate } from "@/types/acp";
+import type {
+  AcpMessage,
+  AcpSessionConfigOption,
+  AcpSessionMode,
+  AcpSessionUpdate,
+} from "@/types/acp";
 import type { AcpConnectionStatus } from "@/hooks/useAcpConnection";
 
 interface ConnectionEntry {
@@ -10,7 +15,9 @@ export interface SessionEntry {
   messages: AcpMessage[];
   activeAcpSessionId: string | null;
   currentMode: string | null;
-  availableModes: string[];
+  availableModes: AcpSessionMode[];
+  availableConfigOptions: AcpSessionConfigOption[];
+  selectedConfigOptions: Record<string, string>;
   agentPlanFilePath: string | null;
   isStreaming: boolean;
 }
@@ -52,11 +59,84 @@ function nextMsgId() {
   return `msg-${++msgCounter}-${Date.now()}`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function normalizeSelectedConfigOptions(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const raw = value as Record<string, unknown>;
+  const normalized: Record<string, string> = {};
+  for (const [configId, selected] of Object.entries(raw)) {
+    if (typeof selected === "string") {
+      normalized[configId] = selected;
+      continue;
+    }
+    const selectedRecord = asRecord(selected);
+    if (!selectedRecord) continue;
+    const optionId =
+      (typeof selectedRecord.optionId === "string" && selectedRecord.optionId) ||
+      (typeof selectedRecord.id === "string" && selectedRecord.id) ||
+      (typeof selectedRecord.value === "string" && selectedRecord.value) ||
+      null;
+    if (optionId) normalized[configId] = optionId;
+  }
+  return normalized;
+}
+
+function readConfigState(payload: Record<string, unknown>): {
+  availableConfigOptions?: AcpSessionConfigOption[];
+  selectedConfigOptions?: Record<string, string>;
+} {
+  const configOptionsContainer = asRecord(payload.configOptions);
+  const container = configOptionsContainer ?? payload;
+  const containerRecord = asRecord(container);
+  if (!containerRecord) return {};
+
+  const availableRaw = containerRecord.availableConfigOptions;
+  const selectedRaw = containerRecord.selectedConfigOptions;
+
+  const availableConfigOptions = Array.isArray(availableRaw)
+    ? (availableRaw as AcpSessionConfigOption[])
+    : undefined;
+  const selectedConfigOptions = selectedRaw
+    ? normalizeSelectedConfigOptions(selectedRaw)
+    : undefined;
+
+  return { availableConfigOptions, selectedConfigOptions };
+}
+
+function readModeState(payload: Record<string, unknown>): {
+  availableModes?: AcpSessionMode[];
+  currentMode?: string | null;
+} {
+  const modesContainer = asRecord(payload.modes);
+  const availableRaw = modesContainer?.availableModes;
+  const availableModes = Array.isArray(availableRaw)
+    ? (availableRaw as AcpSessionMode[])
+    : undefined;
+
+  const currentMode =
+    (typeof payload.currentModeId === "string" && payload.currentModeId) ||
+    (typeof payload.modeId === "string" && payload.modeId) ||
+    (typeof modesContainer?.currentModeId === "string" && modesContainer.currentModeId) ||
+    undefined;
+
+  return { availableModes, currentMode: currentMode ?? null };
+}
+
 function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): SessionEntry {
   const { updateType, payload } = update;
   const p = payload as Record<string, unknown>;
   const msgs = [...entry.messages];
-  let { isStreaming, agentPlanFilePath, currentMode } = entry;
+  let {
+    isStreaming,
+    agentPlanFilePath,
+    currentMode,
+    availableModes,
+    availableConfigOptions,
+    selectedConfigOptions,
+  } = entry;
 
   switch (updateType) {
     case "agent_message_chunk": {
@@ -64,13 +144,24 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       const text = content?.type === "text" ? (content.text as string) : "";
       if (!text) break;
       if (/^(Warning:|Info:|🔬|Experimental)/.test(text)) {
-        msgs.push({ id: nextMsgId(), role: "assistant", type: "notice", content: text, timestamp: new Date() });
+        msgs.push({
+          id: nextMsgId(),
+          role: "assistant",
+          type: "notice",
+          content: text,
+          timestamp: new Date(),
+        });
       } else {
         const last = msgs[msgs.length - 1];
         if (last?.role === "assistant" && !last.type) {
           msgs[msgs.length - 1] = { ...last, content: last.content + text };
         } else {
-          msgs.push({ id: nextMsgId(), role: "assistant", content: text, timestamp: new Date() });
+          msgs.push({
+            id: nextMsgId(),
+            role: "assistant",
+            content: text,
+            timestamp: new Date(),
+          });
         }
       }
       isStreaming = true;
@@ -84,7 +175,13 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       if (last?.role === "assistant" && last.type === "thinking") {
         msgs[msgs.length - 1] = { ...last, content: last.content + text };
       } else {
-        msgs.push({ id: nextMsgId(), role: "assistant", type: "thinking", content: text, timestamp: new Date() });
+        msgs.push({
+          id: nextMsgId(),
+          role: "assistant",
+          type: "thinking",
+          content: text,
+          timestamp: new Date(),
+        });
       }
       isStreaming = true;
       break;
@@ -105,7 +202,11 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       });
       const locations = p.locations as Array<{ path: string }> | undefined;
       const rawInput = p.rawInput as Record<string, unknown> | undefined;
-      const filePath = locations?.[0]?.path || (rawInput?.path as string) || (rawInput?.file_path as string) || "";
+      const filePath =
+        locations?.[0]?.path ||
+        (rawInput?.path as string) ||
+        (rawInput?.file_path as string) ||
+        "";
       if (filePath.endsWith("/plan.md")) agentPlanFilePath = filePath;
       isStreaming = true;
       break;
@@ -117,7 +218,11 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       if (!summary) break;
       const idx = msgs.findIndex((m) => m.toolCallId === (p.toolCallId as string));
       if (idx !== -1) {
-        msgs[idx] = { ...msgs[idx], content: `${msgs[idx].toolTitle || "Tool"}: ${summary}`, toolStatus: "completed" };
+        msgs[idx] = {
+          ...msgs[idx],
+          content: `${msgs[idx].toolTitle || "Tool"}: ${summary}`,
+          toolStatus: "completed",
+        };
       }
       break;
     }
@@ -125,8 +230,15 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       const content = p.content;
       let text = "";
       if (Array.isArray(content)) {
-        text = content.filter((c: Record<string, unknown>) => c?.type === "text").map((c: Record<string, unknown>) => (c.text as string) ?? "").join("");
-      } else if (typeof content === "object" && content !== null && (content as Record<string, unknown>).type === "text") {
+        text = content
+          .filter((c: Record<string, unknown>) => c?.type === "text")
+          .map((c: Record<string, unknown>) => (c.text as string) ?? "")
+          .join("");
+      } else if (
+        typeof content === "object" &&
+        content !== null &&
+        (content as Record<string, unknown>).type === "text"
+      ) {
         text = (content as Record<string, unknown>).text as string;
       }
       if (!text) break;
@@ -138,12 +250,65 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       }
       break;
     }
-    case "current_mode_update":
-      currentMode = p.currentModeId as string;
+    case "current_mode_update": {
+      currentMode =
+        (typeof p.currentModeId === "string" && p.currentModeId) ||
+        (typeof p.modeId === "string" && p.modeId) ||
+        currentMode;
       break;
+    }
+    case "config_option_update":
+    case "config_options_update": {
+      const state = readConfigState(p);
+      if (state.availableConfigOptions) availableConfigOptions = state.availableConfigOptions;
+      if (state.selectedConfigOptions) {
+        selectedConfigOptions = { ...selectedConfigOptions, ...state.selectedConfigOptions };
+      }
+      const singleConfigId =
+        (typeof p.configId === "string" && p.configId) ||
+        (typeof p.id === "string" && p.id) ||
+        null;
+      const singleOptionId =
+        (typeof p.optionId === "string" && p.optionId) ||
+        (typeof p.value === "string" && p.value) ||
+        null;
+      if (singleConfigId && singleOptionId) {
+        selectedConfigOptions = {
+          ...selectedConfigOptions,
+          [singleConfigId]: singleOptionId,
+        };
+      }
+      break;
+    }
+    case "session_info_update": {
+      const modeState = readModeState(p);
+      if (modeState.availableModes) availableModes = modeState.availableModes;
+      if (modeState.currentMode !== undefined) currentMode = modeState.currentMode;
+
+      const configState = readConfigState(p);
+      if (configState.availableConfigOptions) {
+        availableConfigOptions = configState.availableConfigOptions;
+      }
+      if (configState.selectedConfigOptions) {
+        selectedConfigOptions = {
+          ...selectedConfigOptions,
+          ...configState.selectedConfigOptions,
+        };
+      }
+      break;
+    }
   }
 
-  return { ...entry, messages: msgs, isStreaming, agentPlanFilePath, currentMode };
+  return {
+    ...entry,
+    messages: msgs,
+    isStreaming,
+    agentPlanFilePath,
+    currentMode,
+    availableModes,
+    availableConfigOptions,
+    selectedConfigOptions,
+  };
 }
 
 type SessionSubscriber = (entry: SessionEntry) => void;
@@ -156,15 +321,18 @@ function resetStreamingTimer(workspaceId: string) {
   const existing = streamingTimers.get(workspaceId);
   if (existing) clearTimeout(existing);
 
-  streamingTimers.set(workspaceId, setTimeout(() => {
-    streamingTimers.delete(workspaceId);
-    const entry = sessions.get(workspaceId);
-    if (entry?.isStreaming) {
-      const updated = { ...entry, isStreaming: false };
-      sessions.set(workspaceId, updated);
-      notifySubscribers(workspaceId, updated);
-    }
-  }, STREAMING_TIMEOUT_MS));
+  streamingTimers.set(
+    workspaceId,
+    setTimeout(() => {
+      streamingTimers.delete(workspaceId);
+      const entry = sessions.get(workspaceId);
+      if (entry?.isStreaming) {
+        const updated = { ...entry, isStreaming: false };
+        sessions.set(workspaceId, updated);
+        notifySubscribers(workspaceId, updated);
+      }
+    }, STREAMING_TIMEOUT_MS)
+  );
 }
 
 function clearStreamingTimer(workspaceId: string) {
@@ -186,25 +354,28 @@ let listenerSetup = false;
 function ensureGlobalListener() {
   if (listenerSetup) return;
 
-  window.__TAURI__.event.listen<AcpSessionUpdate>("acp:session-update", (event: { payload: AcpSessionUpdate }) => {
-    const update = event.payload;
-    const { workspaceId, sessionId } = update;
-    const entry = sessions.get(workspaceId);
-    if (!entry) return;
-    if (entry.activeAcpSessionId && sessionId !== entry.activeAcpSessionId) return;
+  window.__TAURI__.event
+    .listen<AcpSessionUpdate>("acp:session-update", (event: { payload: AcpSessionUpdate }) => {
+      const update = event.payload;
+      const { workspaceId, sessionId } = update;
+      const entry = sessions.get(workspaceId);
+      if (!entry) return;
+      if (entry.activeAcpSessionId && sessionId !== entry.activeAcpSessionId) return;
 
-    const newEntry = processSessionUpdate(entry, update);
-    sessions.set(workspaceId, newEntry);
-    notifySubscribers(workspaceId, newEntry);
+      const newEntry = processSessionUpdate(entry, update);
+      sessions.set(workspaceId, newEntry);
+      notifySubscribers(workspaceId, newEntry);
 
-    if (newEntry.isStreaming) {
-      resetStreamingTimer(workspaceId);
-    } else {
-      clearStreamingTimer(workspaceId);
-    }
-  }).then(() => {
-    listenerSetup = true;
-  }).catch(console.error);
+      if (newEntry.isStreaming) {
+        resetStreamingTimer(workspaceId);
+      } else {
+        clearStreamingTimer(workspaceId);
+      }
+    })
+    .then(() => {
+      listenerSetup = true;
+    })
+    .catch(console.error);
 }
 
 export function subscribeSession(workspaceId: string, cb: SessionSubscriber): () => void {
@@ -234,10 +405,27 @@ export function addUserMessage(workspaceId: string, text: string) {
   if (!entry) return;
   const newEntry = {
     ...entry,
-    messages: [...entry.messages, { id: nextMsgId(), role: "user" as const, content: text, timestamp: new Date() }],
+    messages: [
+      ...entry.messages,
+      { id: nextMsgId(), role: "user" as const, content: text, timestamp: new Date() },
+    ],
     isStreaming: true,
   };
   sessions.set(workspaceId, newEntry);
   notifySubscribers(workspaceId, newEntry);
   resetStreamingTimer(workspaceId);
+}
+
+export function addSystemNotice(workspaceId: string, text: string) {
+  const entry = sessions.get(workspaceId);
+  if (!entry || !text.trim()) return;
+  const newEntry = {
+    ...entry,
+    messages: [
+      ...entry.messages,
+      { id: nextMsgId(), role: "assistant" as const, type: "notice" as const, content: text, timestamp: new Date() },
+    ],
+  };
+  sessions.set(workspaceId, newEntry);
+  notifySubscribers(workspaceId, newEntry);
 }

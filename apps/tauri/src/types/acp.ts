@@ -9,9 +9,38 @@ export interface AcpSessionModeState {
   currentModeId?: string;
 }
 
+export interface AcpSessionConfigOptionValue {
+  id?: string;
+  optionId?: string;
+  value?: string;
+  name?: string;
+  label?: string;
+  description?: string;
+}
+
+export interface AcpSessionConfigOption {
+  id: string;
+  name?: string;
+  description?: string;
+  category?: string;
+  type?: string;
+  options?: Array<AcpSessionConfigOptionValue | string>;
+}
+
+export interface AcpSessionConfigOptionsState {
+  availableConfigOptions: AcpSessionConfigOption[];
+  selectedConfigOptions?: Record<string, unknown>;
+}
+
 export interface AcpSessionInfo {
   sessionId: string;
   modes?: AcpSessionModeState;
+  configOptions?: AcpSessionConfigOptionsState;
+}
+
+export interface AcpPreferences {
+  modeId: string | null;
+  selectedConfigOptions: Record<string, string>;
 }
 
 export interface AcpSessionSummary {
