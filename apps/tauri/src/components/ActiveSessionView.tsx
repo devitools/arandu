@@ -6,9 +6,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { TerminalChat } from "./TerminalChat";
 import { MarkdownViewer } from "./MarkdownViewer";
-import { useAcpSession } from "@/hooks/useAcpSession";
 import { useAcpLogs } from "@/hooks/useAcpLogs";
 import { usePlanWorkflow } from "@/hooks/usePlanWorkflow";
+import { useSessionMessages } from "@/hooks/useSessionMessages";
+import { useSessionConnection } from "@/hooks/useSessionConnection";
+import { subscribeSession, updateSessionEntry } from "@/lib/session-cache";
 import { ConnectionLogs } from "@/components/ConnectionLogs";
 import type { SessionRecord, PlanPhase } from "@/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AlertCircle, FileText, Loader2, MessageSquare, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
+import { copyToClipboard } from "@/lib/utils";
 
 const PHASES: PlanPhase[] = ["idle", "planning", "reviewing", "executing", "done"];
 
@@ -45,10 +48,14 @@ interface ActiveSessionViewProps {
   workspaceId: string;
   workspacePath: string;
   session: SessionRecord;
-  isConnected: boolean;
+  /** @deprecated Use internal useSessionConnection(session.id) instead */
+  isConnected?: boolean;
+  /** @deprecated */
   isConnecting?: boolean;
   onPhaseChange?: (sessionId: string, phase: PlanPhase) => void;
+  /** @deprecated */
   onConnect?: () => Promise<void>;
+  /** @deprecated */
   onDisconnect?: () => Promise<void>;
   onMinimize?: () => void;
 }
@@ -57,8 +64,8 @@ export function ActiveSessionView({
   workspaceId,
   workspacePath,
   session,
-  isConnected,
-  isConnecting,
+  isConnected: isConnectedProp,
+  isConnecting: isConnectingProp,
   onPhaseChange,
   onConnect,
   onDisconnect,
@@ -71,35 +78,144 @@ export function ActiveSessionView({
   const [planCollapsed, setPlanCollapsed] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
-  const acp = useAcpSession(workspaceId, workspacePath, isConnected);
+  // Per-session connection (new architecture)
+  const sessionConn = useSessionConnection(session.id);
+  // Per-session messages loaded from SQLite (new architecture)
+  const sessionMessages = useSessionMessages(session.id);
+
+  // Resolved connection state (new arch takes precedence over legacy props)
+  const isConnected = sessionConn.status !== "idle" ? sessionConn.isConnected : (isConnectedProp ?? false);
+  const isConnecting = sessionConn.isConnecting || (isConnectingProp ?? false);
+
+  // Streaming state from session-cache (new arch events keyed by session.id)
+  const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentMode, setCurrentMode] = useState<string | null>(null);
+  const [availableModes, setAvailableModes] = useState<string[]>([]);
+  const [agentPlanFilePath, setAgentPlanFilePath] = useState<string | null>(null);
+  const [activeAcpSessionId, setActiveAcpSessionId] = useState<string | null>(
+    session.acp_session_id ?? null
+  );
+  const [errors, setErrors] = useState<string[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeSession(session.id, (entry) => {
+      setCurrentMode(entry.currentMode);
+      setAvailableModes(entry.availableModes);
+      setAgentPlanFilePath(entry.agentPlanFilePath);
+      if (entry.activeAcpSessionId) setActiveAcpSessionId(entry.activeAcpSessionId);
+      if (entry.isStreaming) {
+        setIsStreaming(true);
+        if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
+        streamingTimerRef.current = setTimeout(() => setIsStreaming(false), 800);
+      } else {
+        if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
+        setIsStreaming(false);
+      }
+    });
+    return () => {
+      unsub();
+      if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
+    };
+  }, [session.id]);
+
+  // Connection logs (still keyed by workspaceId for backward compat)
   const acpLogs = useAcpLogs(workspaceId);
+
+  // Core ACP actions using new per-session commands
+  const sendPrompt = useCallback(async (text: string) => {
+    sessionMessages.addOptimisticMessage(text);
+    try {
+      await invoke("acp_session_send_prompt", { sessionId: session.id, text });
+    } catch (e) {
+      setErrors((prev) => [...prev, String(e)]);
+      updateSessionEntry(session.id, { isStreaming: false });
+    }
+  }, [session.id, sessionMessages]);
+
+  const setMode = useCallback(async (mode: string) => {
+    try {
+      await invoke("acp_session_set_mode", { sessionId: session.id, mode });
+      updateSessionEntry(session.id, { currentMode: mode });
+    } catch (e) {
+      setErrors((prev) => [...prev, String(e)]);
+    }
+  }, [session.id]);
+
+  const cancel = useCallback(async () => {
+    try {
+      await invoke("acp_session_cancel", { sessionId: session.id });
+      updateSessionEntry(session.id, { isStreaming: false });
+    } catch (e) {
+      setErrors((prev) => [...prev, String(e)]);
+    }
+  }, [session.id]);
+
+  const clearErrors = useCallback(() => setErrors([]), []);
+
+  const handleClearHistory = useCallback(async () => {
+    try {
+      await invoke("messages_delete_session", { sessionId: session.id });
+      sessionMessages.clearMessages();
+      // Send /clear directly without adding it as an optimistic message
+      await invoke("acp_session_send_prompt", { sessionId: session.id, text: "/clear" });
+    } catch (e) {
+      setErrors((prev) => [...prev, String(e)]);
+    }
+  }, [session.id, sessionMessages]);
 
   const plan = usePlanWorkflow({
     workspaceId,
-    activeSessionId: acp.activeAcpSessionId,
+    workspacePath,
+    activeSessionId: activeAcpSessionId,
     acpSessionId: session.acp_session_id,
     localSessionId: session.id,
     initialPhase: session.phase,
     sessionPlanFilePath: session.plan_file_path,
-    agentPlanFilePath: acp.agentPlanFilePath,
-    isStreaming: acp.isStreaming,
-    availableModes: acp.availableModes,
-    sendPrompt: acp.sendPrompt,
-    setMode: acp.setMode,
+    agentPlanFilePath,
+    isStreaming,
+    availableModes,
+    sendPrompt,
+    setMode,
     onPhaseChange: onPhaseChange
       ? (phase) => onPhaseChange(session.id, phase)
       : undefined,
   });
 
+  const handleConnect = useCallback(async () => {
+    initRef.current = false;
+    if (onConnect) {
+      await onConnect();
+    } else {
+      doInitRef.current();
+    }
+  }, [onConnect]);
+
+  const handleDisconnect = useCallback(async () => {
+    if (onDisconnect) {
+      await onDisconnect();
+    } else {
+      await sessionConn.disconnect();
+    }
+  }, [onDisconnect, sessionConn]);
+
   const doInit = useCallback(async () => {
     setInitError(null);
     try {
       const isNewSession = !session.acp_session_id;
-      let acpId: string;
-      if (!isNewSession) {
-        acpId = await acp.startSession(session.acp_session_id);
-      } else {
-        acpId = await acp.startSession();
+      // acp_session_connect handles both new and resume cases
+      const acpId = await sessionConn.connect(
+        workspacePath,
+        undefined,
+        undefined,
+        session.acp_session_id || undefined
+      );
+      if (!acpId) throw new Error("Failed to connect to ACP");
+
+      setActiveAcpSessionId(acpId);
+      updateSessionEntry(session.id, { activeAcpSessionId: acpId });
+
+      if (isNewSession) {
         await invoke("session_update_acp_id", {
           id: session.id,
           acpSessionId: acpId,
@@ -116,32 +232,32 @@ export function ActiveSessionView({
       console.error("[ActiveSessionView] init error:", e);
       setInitError(String(e));
     }
-  }, [isConnected, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, acp.startSession, plan.startPlanning]);
+  }, [sessionConn, workspacePath, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, plan.startPlanning]);
 
+  // Auto-init: connect + send initial prompt on mount (or when session changes)
+  const doInitRef = useRef(doInit);
+  doInitRef.current = doInit;
   useEffect(() => {
-    initRef.current = false;
-  }, [session.id, session.acp_session_id]);
-
-  useEffect(() => {
-    if (!isConnected) {
-      initRef.current = false;
-      return;
-    }
     if (initRef.current) return;
     initRef.current = true;
-    doInit();
-  }, [isConnected, session.id, session.acp_session_id]);
+    doInitRef.current();
+  }, [session.id]); // run once per session
+
+  // Reset initRef when session ACP id is cleared (allows re-init on reconnect)
+  useEffect(() => {
+    if (!session.acp_session_id) initRef.current = false;
+  }, [session.acp_session_id]);
 
   const handleReconnect = useCallback(async () => {
     initRef.current = false;
     setInitError(null);
     try {
-      if (onDisconnect) await onDisconnect();
+      await handleDisconnect();
     } catch (e) {
       console.warn("[ActiveSessionView] disconnect during reconnect failed:", e);
     }
-    if (onConnect) await onConnect();
-  }, [onDisconnect, onConnect]);
+    await handleConnect();
+  }, [handleDisconnect, handleConnect]);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleLayout = useCallback((sizes: number[]) => {
@@ -212,7 +328,7 @@ export function ActiveSessionView({
           <button
             className="text-xs text-muted-foreground/50 hover:text-muted-foreground font-mono flex-shrink-0 transition-colors"
             title={session.acp_session_id ?? session.id}
-            onClick={() => navigator.clipboard.writeText(session.acp_session_id ?? session.id)}
+            onClick={() => { void copyToClipboard(session.acp_session_id ?? session.id); }}
           >
             #{(session.acp_session_id ?? session.id).slice(0, 8)}
           </button>
@@ -243,27 +359,27 @@ export function ActiveSessionView({
               <Loader2 className="h-3 w-3 animate-spin" />
               {t("acp.connecting")}
             </span>
-          ) : isConnected && onDisconnect ? (
+          ) : isConnected ? (
             <Button
               variant="ghost"
               size="sm"
               className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={onDisconnect}
+              onClick={handleDisconnect}
             >
               <Unplug className="h-3 w-3" />
               {t("acp.disconnect")}
             </Button>
-          ) : !isConnected && onConnect ? (
+          ) : (
             <Button
               variant="ghost"
               size="sm"
               className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={onConnect}
+              onClick={handleConnect}
             >
               <Plug className="h-3 w-3" />
               {t("acp.connect")}
             </Button>
-          ) : null}
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <Button
@@ -323,14 +439,18 @@ export function ActiveSessionView({
         >
           <div className="absolute inset-0">
             <TerminalChat
-              messages={acp.messages}
-              errors={acp.errors}
-              isStreaming={acp.isStreaming}
-              onSend={acp.sendPrompt}
-              onCancel={acp.cancel}
-              onClearErrors={acp.clearErrors}
+              messages={sessionMessages.messages}
+              errors={errors}
+              isStreaming={isStreaming}
+              onSend={sendPrompt}
+              onCancel={cancel}
+              onClearErrors={clearErrors}
+              onClearHistory={handleClearHistory}
               disabled={!isConnected}
               initialPrompt={session.initial_prompt || undefined}
+              onLoadMore={sessionMessages.hasMore ? sessionMessages.loadMore : undefined}
+              hasMore={sessionMessages.hasMore}
+              isLoadingMore={sessionMessages.isLoadingMore}
             />
           </div>
         </ResizablePanel>

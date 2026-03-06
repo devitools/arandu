@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Instant;
+use indexmap::IndexMap;
 use tokio::sync::Mutex;
 use tauri::{AppHandle, State, Emitter};
 
@@ -18,6 +21,46 @@ impl Default for AcpState {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-session ACP architecture (new, coexists with AcpState during migration)
+// ---------------------------------------------------------------------------
+
+pub struct AcpSessionInstance {
+    pub connection: Arc<AcpConnection>,
+    /// Copilot-internal session UUID returned by session/new or session/load
+    pub acp_session_id: String,
+    /// Our local DB session UUID (sessions.id)
+    #[allow(dead_code)]
+    pub arandu_session_id: String,
+    pub last_activity: Arc<Mutex<Instant>>,
+}
+
+pub struct AcpSessionStore {
+    /// Ordered by insertion time; key = arandu_session_id
+    pub instances: Mutex<IndexMap<String, AcpSessionInstance>>,
+    pub configs: Mutex<HashMap<String, SessionConnectionConfig>>,
+    pub max_instances: usize,
+}
+
+impl Default for AcpSessionStore {
+    fn default() -> Self {
+        Self {
+            instances: Mutex::new(IndexMap::new()),
+            configs: Mutex::new(HashMap::new()),
+            max_instances: 10,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SessionConnectionConfig {
+    pub binary: String,
+    pub cwd: String,
+    pub gh_token: Option<String>,
+}
+
 
 #[tauri::command]
 pub async fn acp_connect(
@@ -311,3 +354,262 @@ pub async fn disconnect_all(state: &AcpState) {
         conn.shutdown().await;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-session commands (new architecture)
+// ---------------------------------------------------------------------------
+
+/// Spawn a dedicated copilot process for the given Arandu session, then
+/// initialize the ACP connection and create (or load) an ACP session.
+/// If the store already has a live instance for this session, returns early.
+/// Enforces the max_instances cap using LRU eviction.
+#[tauri::command]
+pub async fn acp_session_connect(
+    session_id: String,
+    workspace_path: String,
+    binary_path: Option<String>,
+    gh_token: Option<String>,
+    acp_session_id: Option<String>,
+    app_handle: AppHandle,
+    store: State<'_, AcpSessionStore>,
+) -> Result<String, String> {
+    eprintln!("[acp] acp_session_connect: session={} workspace={}", session_id, workspace_path);
+
+    // Return early if already alive
+    {
+        let instances = store.instances.lock().await;
+        if let Some(inst) = instances.get(&session_id) {
+            if inst.connection.is_alive().await {
+                eprintln!("[acp] session={} already connected, returning existing acp_id={}", session_id, inst.acp_session_id);
+                return Ok(inst.acp_session_id.clone());
+            }
+        }
+    }
+
+    let binary = binary_path
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string()));
+
+    emit_session_status(&app_handle, &session_id, "connecting");
+
+    // Enforce cap: evict LRU if at limit
+    {
+        let mut instances = store.instances.lock().await;
+        if instances.len() >= store.max_instances {
+            // Find oldest disconnected instance
+            // Evict the oldest instance (first inserted = index 0)
+            let evict_key = instances.keys().next().cloned().unwrap_or_default();
+            if !evict_key.is_empty() {
+                if let Some(old) = instances.shift_remove(&evict_key) {
+                    emit_session_status(&app_handle, &evict_key, "disconnected");
+                    eprintln!("[acp] Evicting session {} (LRU cap)", evict_key);
+                    old.connection.shutdown().await;
+                }
+            }
+        }
+    }
+
+    let conn = AcpConnection::spawn(
+        &binary,
+        &["--acp", "--stdio"],
+        &workspace_path,
+        gh_token.clone(),
+        session_id.clone(),
+        app_handle.clone(),
+    )
+    .await?;
+
+    let init_params = InitializeParams {
+        protocol_version: 1,
+        client_capabilities: serde_json::json!({}),
+    };
+    conn.send_request(
+        "initialize",
+        Some(serde_json::to_value(&init_params).map_err(|e| e.to_string())?),
+    )
+    .await?;
+    conn.send_notification("initialized", None).await?;
+
+    // Create or load the ACP session
+    let info: SessionInfo = if let Some(ref existing_id) = acp_session_id {
+        let params = LoadSessionParams {
+            session_id: existing_id.clone(),
+            cwd: workspace_path.clone(),
+            mcp_servers: vec![],
+        };
+        let result = conn
+            .send_request("session/load", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+            .await?;
+        let mut info: SessionInfo = serde_json::from_value(result)
+            .map_err(|e| format!("Failed to parse session info: {}", e))?;
+        if info.session_id.is_empty() {
+            info.session_id = existing_id.clone();
+        }
+        info
+    } else {
+        let params = NewSessionParams {
+            cwd: workspace_path.clone(),
+            mcp_servers: vec![],
+        };
+        let result = conn
+            .send_request("session/new", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+            .await?;
+        serde_json::from_value(result)
+            .map_err(|e| format!("Failed to parse session info: {}", e))?
+    };
+
+    let copilot_session_id = info.session_id.clone();
+    eprintln!("[acp] session={} connected — copilot_session_id={} binary={}", session_id, copilot_session_id, binary);
+
+    conn.emit_status("connected", None);
+    conn.emit_log("info", "connect", &format!("Session connected via {}", binary));
+
+    let instance = AcpSessionInstance {
+        connection: Arc::new(conn),
+        acp_session_id: copilot_session_id.clone(),
+        arandu_session_id: session_id.clone(),
+        last_activity: Arc::new(Mutex::new(Instant::now())),
+    };
+
+    store.instances.lock().await.insert(session_id.clone(), instance);
+    store.configs.lock().await.insert(session_id, SessionConnectionConfig {
+        binary,
+        cwd: workspace_path,
+        gh_token,
+    });
+
+    Ok(copilot_session_id)
+}
+
+#[tauri::command]
+pub async fn acp_session_disconnect(
+    session_id: String,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    eprintln!("[acp] acp_session_disconnect: session={}", session_id);
+    store.configs.lock().await.remove(&session_id);
+    let inst = store.instances.lock().await.shift_remove(&session_id);
+    if let Some(inst) = inst {
+        inst.connection.emit_log("info", "disconnect", "Disconnected by user");
+        inst.connection.shutdown().await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_session_status(
+    session_id: String,
+    app_handle: AppHandle,
+    store: State<'_, AcpSessionStore>,
+) -> Result<String, String> {
+    let mut instances = store.instances.lock().await;
+    if let Some(inst) = instances.get(&session_id) {
+        if inst.connection.is_alive().await {
+            return Ok("connected".to_string());
+        }
+        // Dead — remove and clean up
+        if let Some(inst) = instances.shift_remove(&session_id) {
+            inst.connection.shutdown().await;
+        }
+        store.configs.lock().await.remove(&session_id);
+        emit_session_status(&app_handle, &session_id, "disconnected");
+        return Ok("disconnected".to_string());
+    }
+    emit_session_status(&app_handle, &session_id, "disconnected");
+    Ok("disconnected".to_string())
+}
+
+#[tauri::command]
+pub async fn acp_session_send_prompt(
+    session_id: String,
+    text: String,
+    app_handle: AppHandle,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    eprintln!("[acp] acp_session_send_prompt: session={} text={:.60}", session_id, text);
+
+    // Extract what we need and release the lock BEFORE the long-running send_prompt
+    let (conn, acp_id) = {
+        let instances = store.instances.lock().await;
+        let inst = instances.get(&session_id).ok_or("Session not connected")?;
+        *inst.last_activity.lock().await = Instant::now();
+        (Arc::clone(&inst.connection), inst.acp_session_id.clone())
+    };
+
+    // Emit optimistic status
+    emit_session_status(&app_handle, &session_id, "streaming");
+
+    // send_prompt saves the user message to DB then forwards to copilot
+    let result = conn
+        .send_prompt(acp_id, text, std::time::Duration::from_secs(600))
+        .await?;
+
+    eprintln!("[acp] session={} prompt result: {}", session_id, serde_json::to_string(&result).unwrap_or_default().chars().take(500).collect::<String>());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_session_set_mode(
+    session_id: String,
+    mode: String,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    let (conn, acp_id) = {
+        let instances = store.instances.lock().await;
+        let inst = instances.get(&session_id).ok_or("Session not connected")?;
+        (Arc::clone(&inst.connection), inst.acp_session_id.clone())
+    };
+    let params = SetSessionModeParams { session_id: acp_id, mode_id: mode };
+    conn.send_request("session/set_mode", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_session_cancel(
+    session_id: String,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    let (conn, acp_id) = {
+        let instances = store.instances.lock().await;
+        let inst = instances.get(&session_id).ok_or("Session not connected")?;
+        (Arc::clone(&inst.connection), inst.acp_session_id.clone())
+    };
+    let params = CancelParams { session_id: acp_id };
+    conn.send_notification("session/cancel", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_session_list_active(
+    store: State<'_, AcpSessionStore>,
+) -> Result<Vec<String>, String> {
+    let instances = store.instances.lock().await;
+    let mut active = Vec::new();
+    for (id, inst) in instances.iter() {
+        if inst.connection.is_alive().await {
+            active.push(id.clone());
+        }
+    }
+    Ok(active)
+}
+
+#[allow(dead_code)]
+pub async fn disconnect_all_sessions(store: &AcpSessionStore) {
+    store.configs.lock().await.clear();
+    let mut instances = store.instances.lock().await;
+    for (id, inst) in instances.drain(..) {
+        eprintln!("[acp] Disconnecting session {}", id);
+        inst.connection.shutdown().await;
+    }
+}
+
+fn emit_session_status(app_handle: &AppHandle, session_id: &str, status: &str) {
+    let event = serde_json::json!({
+        "sessionId": session_id,
+        "status": status,
+    });
+    let _ = app_handle.emit("acp:session-status", &event);
+}
+

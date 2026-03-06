@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Activity, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +31,7 @@ export function ConnectionLogs({ logs, hasRecentErrors, onClear }: ConnectionLog
     const text = logs
       .map((l) => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.event}: ${l.message}`)
       .join("\n");
-    navigator.clipboard.writeText(text);
+    void copyToClipboard(text);
   };
 
   return (

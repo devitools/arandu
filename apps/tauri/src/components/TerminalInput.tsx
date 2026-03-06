@@ -1,14 +1,26 @@
 import { useRef, useState, useEffect } from "react";
-import { Send, Square } from "lucide-react";
+import { Send, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MicButton } from "@/components/MicButton";
 import { useTranslation } from "react-i18next";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface TerminalInputProps {
   onSend: (text: string) => void;
   isStreaming: boolean;
   onCancel: () => void;
+  onClearHistory?: () => void;
   disabled?: boolean;
   placeholder?: string;
 }
@@ -17,6 +29,7 @@ export function TerminalInput({
   onSend,
   isStreaming,
   onCancel,
+  onClearHistory,
   disabled,
   placeholder,
 }: TerminalInputProps) {
@@ -82,33 +95,67 @@ export function TerminalInput({
         placeholder={placeholder || t("chat.placeholder")}
         style={{ height: inputHeight }}
         className="text-xs resize-none font-mono bg-background/50 border-border/60 placeholder:text-muted-foreground/40 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-offset-0"
-        disabled={isStreaming || disabled}
+        disabled={disabled}
       />
-      <div className="flex items-center justify-end gap-2">
-        {!isStreaming && !disabled && (
-          <MicButton size="sm" onTranscriptionComplete={(text) => setInput((prev) => prev + text)} />
-        )}
-        {isStreaming ? (
-          <Button
-            onClick={onCancel}
-            size="sm"
-            variant="destructive"
-            className="text-xs gap-1.5 min-w-[100px]"
-          >
-            <Square className="h-3 w-3" />
-            {t("acp.cancel")}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className="text-xs gap-1.5 font-mono min-w-[100px]"
-            onClick={handleSend}
-            disabled={!input.trim() || disabled}
-          >
-            <Send className="h-3 w-3" />
-            {t("chat.send")}
-          </Button>
-        )}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {onClearHistory && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs gap-1.5 text-muted-foreground hover:text-destructive"
+                  disabled={isStreaming}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {t("chat.clearHistory")}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("chat.clearHistoryTitle")}</AlertDialogTitle>
+                  <AlertDialogDescription>{t("chat.clearHistoryDescription")}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={onClearHistory}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {t("common.delete")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!isStreaming && !disabled && (
+            <MicButton size="sm" onTranscriptionComplete={(text) => setInput((prev) => prev + text)} />
+          )}
+          {isStreaming ? (
+            <Button
+              onClick={onCancel}
+              size="sm"
+              variant="destructive"
+              className="text-xs gap-1.5 min-w-[100px]"
+            >
+              <Square className="h-3 w-3" />
+              {t("acp.cancel")}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="text-xs gap-1.5 font-mono min-w-[100px]"
+              onClick={handleSend}
+              disabled={!input.trim() || disabled}
+            >
+              <Send className="h-3 w-3" />
+              {t("chat.send")}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

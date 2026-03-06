@@ -42,7 +42,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
     const rest = lines.slice(1).join("\n");
     return (
       <div className="terminal-msg terminal-msg-user terminal-msg-user--collapsible">
-        <details open>
+        <details>
           <summary className="font-mono text-xs text-muted-foreground">
             {firstLine}
           </summary>

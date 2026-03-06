@@ -61,7 +61,10 @@ export function useAcpSession(
   const [currentMode, setCurrentMode] = useState<string | null>(cached?.currentMode ?? null);
   const [availableModes, setAvailableModes] = useState<string[]>(cached?.availableModes ?? []);
   const [activeAcpSessionId, setActiveAcpSessionId] = useState<string | null>(cached?.activeAcpSessionId ?? null);
-  const [agentPlanFilePath, setAgentPlanFilePath] = useState<string | null>(cached?.agentPlanFilePath ?? null);
+  // agentPlanFilePath must NOT be initialized from cache: the cache is keyed by workspaceId,
+  // so a stale path from the previous session would contaminate the new one.
+  // The plan path for a resumed session is restored from session.plan_file_path (DB) via usePlanWorkflow.
+  const [agentPlanFilePath, setAgentPlanFilePath] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
 
   const activeAcpSessionIdRef = useRef<string | null>(cached?.activeAcpSessionId ?? null);
@@ -77,7 +80,7 @@ export function useAcpSession(
       setCurrentMode(entry.currentMode);
       setAvailableModes(entry.availableModes);
       setActiveAcpSessionId(entry.activeAcpSessionId);
-      setAgentPlanFilePath(entry.agentPlanFilePath);
+      // agentPlanFilePath is intentionally NOT read from cache here — see comment on useState above.
       activeAcpSessionIdRef.current = entry.activeAcpSessionId;
     }
 

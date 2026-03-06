@@ -144,13 +144,14 @@ export function useAcpConnection(
   }, [workspaceId, workspacePath, connectionStatus]);
 
   const disconnect = useCallback(async () => {
+    // Update UI immediately (optimistic) — acp_disconnect can block if the Rust
+    // side holds the connections lock, so we must not rely on the finally block.
+    connectedRef.current = false;
+    setConnectionStatus("idle");
     try {
       await window.__TAURI__.core.invoke("acp_disconnect", { workspaceId });
     } catch {
       // ignore disconnect errors
-    } finally {
-      connectedRef.current = false;
-      setConnectionStatus("idle");
     }
   }, [workspaceId]);
 

@@ -22,6 +22,7 @@ interface SessionCardProps {
   session: SessionRecord;
   onSelect: (session: SessionRecord) => void;
   onDelete: (id: string) => void;
+  connectionStatus?: "connected" | "disconnected" | "connecting" | "idle";
 }
 
 const PHASE_COLORS: Record<PlanPhase, string> = {
@@ -40,7 +41,14 @@ const PHASE_KEYS: Record<PlanPhase, string> = {
   done: "plan.phaseDone",
 };
 
-export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
+const CONN_COLORS: Record<string, string> = {
+  connected: "bg-green-500",
+  connecting: "bg-yellow-400 animate-pulse",
+  disconnected: "bg-muted-foreground/30",
+  idle: "bg-muted-foreground/20",
+};
+
+export function SessionCard({ session, onSelect, onDelete, connectionStatus }: SessionCardProps) {
   const { t, i18n } = useTranslation();
 
   return (
@@ -81,11 +89,19 @@ export function SessionCard({ session, onSelect, onDelete }: SessionCardProps) {
 
       <div>
         <h3 className="font-semibold text-base line-clamp-2 pr-6 leading-snug">{session.name}</h3>
-        <div className="flex items-center gap-1.5 mt-2">
-          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", PHASE_COLORS[session.phase])} />
-          <span className="text-xs text-muted-foreground">
-            {t(PHASE_KEYS[session.phase])}
-          </span>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-1.5">
+            <span className={cn("w-2 h-2 rounded-full flex-shrink-0", PHASE_COLORS[session.phase])} />
+            <span className="text-xs text-muted-foreground">
+              {t(PHASE_KEYS[session.phase])}
+            </span>
+          </div>
+          {connectionStatus && connectionStatus !== "idle" && (
+            <span
+              className={cn("w-2 h-2 rounded-full flex-shrink-0", CONN_COLORS[connectionStatus])}
+              title={connectionStatus}
+            />
+          )}
         </div>
       </div>
       <div className="text-[11px] text-muted-foreground mt-3 text-right">

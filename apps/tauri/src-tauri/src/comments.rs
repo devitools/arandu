@@ -32,7 +32,14 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<Connection, String> {
     std::fs::create_dir_all(app_data_dir)
         .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
-    let db_path = app_data_dir.join("comments.db");
+    // Migrate from old name to new name if needed
+    let old_path = app_data_dir.join("comments.db");
+    let db_path = app_data_dir.join("arandu.db");
+    if old_path.exists() && !db_path.exists() {
+        std::fs::rename(&old_path, &db_path)
+            .map_err(|e| format!("Failed to migrate database: {}", e))?;
+    }
+
     let conn = Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
 
@@ -54,6 +61,9 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<Connection, String> {
             file_hash   TEXT NOT NULL
         );"
     ).map_err(|e| format!("Failed to create tables: {}", e))?;
+
+    crate::messages::init_messages_table(&conn)?;
+    crate::sessions::init_workspaces_table(&conn)?;
 
     Ok(conn)
 }

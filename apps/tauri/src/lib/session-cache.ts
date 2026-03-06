@@ -91,6 +91,7 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
     }
     case "end_turn":
       isStreaming = false;
+      msgs.splice(0); // clear live buffer — persisted messages live in SQLite
       break;
     case "tool_call": {
       msgs.push({
@@ -121,29 +122,12 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       }
       break;
     }
-    case "user_message_chunk": {
-      const content = p.content;
-      let text = "";
-      if (Array.isArray(content)) {
-        text = content.filter((c: Record<string, unknown>) => c?.type === "text").map((c: Record<string, unknown>) => (c.text as string) ?? "").join("");
-      } else if (typeof content === "object" && content !== null && (content as Record<string, unknown>).type === "text") {
-        text = (content as Record<string, unknown>).text as string;
-      }
-      if (!text) break;
-      const last = msgs[msgs.length - 1];
-      if (last?.role === "user") {
-        msgs[msgs.length - 1] = { ...last, content: last.content + text };
-      } else {
-        msgs.push({ id: nextMsgId(), role: "user", content: text, timestamp: new Date() });
-      }
-      break;
-    }
     case "current_mode_update":
       currentMode = p.currentModeId as string;
       break;
   }
 
-  return { ...entry, messages: msgs, isStreaming, agentPlanFilePath, currentMode };
+  return { ...entry, messages: msgs.length === 0 ? [] : msgs, isStreaming, agentPlanFilePath, currentMode };
 }
 
 type SessionSubscriber = (entry: SessionEntry) => void;
@@ -185,6 +169,7 @@ function notifySubscribers(workspaceId: string, entry: SessionEntry) {
 let listenerSetup = false;
 function ensureGlobalListener() {
   if (listenerSetup) return;
+  listenerSetup = true; // set synchronously to prevent double-registration on concurrent calls
 
   window.__TAURI__.event.listen<AcpSessionUpdate>("acp:session-update", (event: { payload: AcpSessionUpdate }) => {
     const update = event.payload;
@@ -202,13 +187,25 @@ function ensureGlobalListener() {
     } else {
       clearStreamingTimer(workspaceId);
     }
-  }).then(() => {
-    listenerSetup = true;
-  }).catch(console.error);
+  }).catch((e: unknown) => {
+    listenerSetup = false; // allow retry if registration fails
+    console.error(e);
+  });
 }
 
 export function subscribeSession(workspaceId: string, cb: SessionSubscriber): () => void {
   ensureGlobalListener();
+  // Ensure a session entry exists so events are not dropped
+  if (!sessions.has(workspaceId)) {
+    sessions.set(workspaceId, {
+      messages: [],
+      activeAcpSessionId: null,
+      currentMode: null,
+      availableModes: [],
+      agentPlanFilePath: null,
+      isStreaming: false,
+    });
+  }
   let subs = subscribers.get(workspaceId);
   if (!subs) {
     subs = new Set();

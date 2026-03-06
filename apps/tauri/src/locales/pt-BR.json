@@ -6,7 +6,9 @@
     "loading": "Carregando...",
     "reload": "Recarregar",
     "tryAgain": "Tentar Novamente",
-    "dismiss": "Dispensar"
+    "dismiss": "Dispensar",
+    "copied": "Copiado!",
+    "delete": "Apagar"
   },
   "home": {
     "tagline": "Seu parceiro inteligente no desenvolvimento de software",
@@ -20,10 +22,14 @@
   },
   "chat": {
     "emptyState": "Inicie uma conversa",
+    "loadMore": "Carregar mensagens anteriores",
     "you": "Você",
     "assistant": "Assistente",
     "placeholder": "Passe orientações para o agente...",
-    "send": "Enviar"
+    "send": "Enviar",
+    "clearHistory": "Apagar histórico",
+    "clearHistoryTitle": "Apagar histórico da sessão?",
+    "clearHistoryDescription": "Todas as mensagens serão removidas e um comando /clear será enviado ao agente. Esta ação não pode ser desfeita."
   },
   "workspace": {
     "closeTitle": "Fechar área de trabalho?",

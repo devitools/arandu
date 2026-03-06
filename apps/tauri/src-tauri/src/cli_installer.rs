@@ -6,6 +6,27 @@ use std::process::Command;
 
 const CLI_SCRIPT: &str = r#"#!/bin/bash
 SOCKET="$HOME/.arandu/arandu.sock"
+TCP_HOST="${ARANDU_HOST:-host.docker.internal}"
+TCP_PORT="${ARANDU_PORT:-}"
+
+# TCP mode (sandbox/Docker environment via ARANDU_PORT)
+if [ -n "$TCP_PORT" ]; then
+    if [ "$#" -eq 0 ]; then
+        printf '{"command":"show"}\n' | nc "$TCP_HOST" "$TCP_PORT" -w 2 2>/dev/null && exit 0
+    else
+        FAILED=0
+        for f in "$@"; do
+            ABS="$(cd "$(dirname "$f")" 2>/dev/null && echo "$PWD/$(basename "$f")")"
+            ESCAPED=${ABS//\\/\\\\}
+            ESCAPED=${ESCAPED//\"/\\\"}
+            if ! printf '{"command":"open","path":"%s"}\n' "$ESCAPED" | nc "$TCP_HOST" "$TCP_PORT" -w 2 2>/dev/null; then
+                FAILED=1
+                break
+            fi
+        done
+        [ "$FAILED" -eq 0 ] && exit 0
+    fi
+fi
 
 # Se socket existe, usar IPC (caminho rápido)
 if [ -S "$SOCKET" ]; then

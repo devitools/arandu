@@ -6,7 +6,9 @@
     "loading": "Loading...",
     "reload": "Reload",
     "tryAgain": "Try Again",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "copied": "Copied!",
+    "delete": "Delete"
   },
   "home": {
     "tagline": "Intelligent development companion",
@@ -20,10 +22,14 @@
   },
   "chat": {
     "emptyState": "Start a conversation",
+    "loadMore": "Load older messages",
     "you": "You",
     "assistant": "Assistant",
     "placeholder": "Type a message...",
-    "send": "Send"
+    "send": "Send",
+    "clearHistory": "Clear history",
+    "clearHistoryTitle": "Clear session history?",
+    "clearHistoryDescription": "All messages will be removed and a /clear command will be sent to the agent. This action cannot be undone."
   },
   "workspace": {
     "closeTitle": "Close workspace?",

@@ -13,6 +13,7 @@ interface UsePlanWorkflowReturn {
 
 interface UsePlanWorkflowParams {
   workspaceId: string;
+  workspacePath: string;
   activeSessionId: string | null;
   acpSessionId: string | null;
   localSessionId: string | null;
@@ -28,6 +29,7 @@ interface UsePlanWorkflowParams {
 
 export function usePlanWorkflow({
   workspaceId,
+  workspacePath,
   activeSessionId,
   acpSessionId,
   localSessionId,
@@ -40,9 +42,12 @@ export function usePlanWorkflow({
   onPhaseChange,
 }: UsePlanWorkflowParams): UsePlanWorkflowReturn {
   const [phase, setPhaseRaw] = useState<PlanPhase>(initialPhase ?? "idle");
-  const [planFilePath, setPlanFilePath] = useState<string | null>(
-    sessionPlanFilePath
-  );
+  // Only initialize planFilePath from DB if it belongs to this workspace
+  const validStoredPath =
+    sessionPlanFilePath && workspacePath && sessionPlanFilePath.startsWith(workspacePath)
+      ? sessionPlanFilePath
+      : null;
+  const [planFilePath, setPlanFilePath] = useState<string | null>(validStoredPath);
 
   const onPhaseChangeRef = useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
@@ -70,13 +75,6 @@ export function usePlanWorkflow({
       }).catch(console.error);
     }
   }, [agentPlanFilePath, localSessionId]);
-
-  useEffect(() => {
-    if (planFilePath || !localSessionId) return;
-    invoke<string>("plan_path", { sessionId: localSessionId })
-      .then(setPlanFilePath)
-      .catch(console.error);
-  }, [localSessionId, planFilePath]);
 
   const availableModesRef = useRef(availableModes);
   availableModesRef.current = availableModes;

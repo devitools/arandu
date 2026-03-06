@@ -14,6 +14,7 @@ mod acp;
 mod cli_installer;
 mod comments;
 mod history;
+mod messages;
 mod plan_file;
 mod sessions;
 mod ipc_common;
@@ -775,6 +776,7 @@ pub fn run() {
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)))
         .manage(acp::commands::AcpState::default())
+        .manage(acp::commands::AcpSessionStore::default())
         .manage(whisper::watcher::WhisperWatcherState {
             models_watcher: Mutex::new(None),
             settings_watcher: Mutex::new(None),
@@ -974,7 +976,18 @@ pub fn run() {
             acp::commands::acp_set_mode,
             acp::commands::acp_cancel,
             acp::commands::acp_check_health,
+            acp::commands::acp_session_connect,
+            acp::commands::acp_session_disconnect,
+            acp::commands::acp_session_status,
+            acp::commands::acp_session_send_prompt,
+            acp::commands::acp_session_set_mode,
+            acp::commands::acp_session_cancel,
+            acp::commands::acp_session_list_active,
             sessions::count_workspace_sessions,
+            sessions::workspace_list,
+            sessions::workspace_upsert,
+            sessions::workspace_touch,
+            sessions::workspace_delete,
             sessions::session_list,
             sessions::session_create,
             sessions::session_get,
@@ -988,6 +1001,9 @@ pub fn run() {
             plan_file::plan_write,
             plan_file::plan_read,
             plan_file::plan_path,
+            messages::messages_list,
+            messages::messages_count,
+            messages::messages_delete_session,
             run_diagnostics,
         ])
         .build(tauri::generate_context!())

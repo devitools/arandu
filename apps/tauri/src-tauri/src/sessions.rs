@@ -238,6 +238,84 @@ pub fn delete_workspace_sessions(conn: &Connection, workspace_path: &str) -> Res
     Ok(ids)
 }
 
+// --- Workspace table ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WorkspaceRecord {
+    pub id: String,
+    pub path: String,
+    pub display_name: String,
+    pub workspace_type: String, // "directory" | "file"
+    pub last_accessed: String,
+    pub created_at: String,
+}
+
+pub fn init_workspaces_table(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS workspaces (
+            id              TEXT PRIMARY KEY,
+            path            TEXT NOT NULL UNIQUE,
+            display_name    TEXT NOT NULL,
+            workspace_type  TEXT NOT NULL DEFAULT 'directory',
+            last_accessed   TEXT NOT NULL,
+            created_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspaces_accessed ON workspaces(last_accessed DESC);"
+    )
+    .map_err(|e| format!("Failed to create workspaces table: {}", e))
+}
+
+fn row_to_workspace(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceRecord> {
+    Ok(WorkspaceRecord {
+        id: row.get(0)?,
+        path: row.get(1)?,
+        display_name: row.get(2)?,
+        workspace_type: row.get(3)?,
+        last_accessed: row.get(4)?,
+        created_at: row.get(5)?,
+    })
+}
+
+pub fn list_workspaces(conn: &Connection) -> Result<Vec<WorkspaceRecord>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, path, display_name, workspace_type, last_accessed, created_at FROM workspaces ORDER BY last_accessed DESC")
+        .map_err(|e| format!("Query prepare error: {}", e))?;
+    let rows = stmt
+        .query_map([], row_to_workspace)
+        .map_err(|e| format!("Query error: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Row error: {}", e))?;
+    Ok(rows)
+}
+
+pub fn upsert_workspace(conn: &Connection, id: &str, path: &str, display_name: &str, workspace_type: &str) -> Result<WorkspaceRecord, String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO workspaces (id, path, display_name, workspace_type, last_accessed, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+         ON CONFLICT(path) DO UPDATE SET display_name=excluded.display_name, last_accessed=excluded.last_accessed",
+        params![id, path, display_name, workspace_type, now],
+    ).map_err(|e| format!("Upsert workspace error: {}", e))?;
+    conn.query_row(
+        "SELECT id, path, display_name, workspace_type, last_accessed, created_at FROM workspaces WHERE path = ?1",
+        params![path],
+        row_to_workspace,
+    ).map_err(|e| format!("Fetch workspace error: {}", e))
+}
+
+pub fn touch_workspace(conn: &Connection, id: &str) -> Result<(), String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute("UPDATE workspaces SET last_accessed = ?1 WHERE id = ?2", params![now, id])
+        .map_err(|e| format!("Touch workspace error: {}", e))?;
+    Ok(())
+}
+
+pub fn delete_workspace(conn: &Connection, id: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM workspaces WHERE id = ?1", params![id])
+        .map_err(|e| format!("Delete workspace error: {}", e))?;
+    Ok(())
+}
+
 // --- Tauri commands ---
 
 use crate::comments::CommentsDb;
@@ -338,6 +416,7 @@ pub fn session_delete(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::messages::delete_session_messages(&conn, &id)?;
     delete_session(&conn, &id)?;
     let app_data = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
@@ -370,7 +449,39 @@ pub fn forget_workspace_data(
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
     for id in &session_ids {
         let _ = crate::plan_file::delete_plan(&app_data, id);
+        let conn2 = db.0.lock().map_err(|e| e.to_string())?;
+        let _ = crate::messages::delete_session_messages(&conn2, id);
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn workspace_list(db: tauri::State<CommentsDb>) -> Result<Vec<WorkspaceRecord>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    list_workspaces(&conn)
+}
+
+#[tauri::command]
+pub fn workspace_upsert(
+    id: String,
+    path: String,
+    display_name: String,
+    workspace_type: String,
+    db: tauri::State<CommentsDb>,
+) -> Result<WorkspaceRecord, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    upsert_workspace(&conn, &id, &path, &display_name, &workspace_type)
+}
+
+#[tauri::command]
+pub fn workspace_touch(id: String, db: tauri::State<CommentsDb>) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    touch_workspace(&conn, &id)
+}
+
+#[tauri::command]
+pub fn workspace_delete(id: String, db: tauri::State<CommentsDb>) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    delete_workspace(&conn, &id)
 }

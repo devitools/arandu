@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::types::*;
 
@@ -48,6 +48,7 @@ impl AcpConnection {
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", binary, e))?;
 
+        eprintln!("[acp] Spawned {} pid={:?} cwd={} workspace={}", binary, child.id(), cwd, workspace_id);
         let stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
 
@@ -110,6 +111,9 @@ impl AcpConnection {
     ) {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
+        // Buffer to accumulate streaming assistant message chunks until end_turn
+        let mut streaming_buffer: Option<String> = None;
+        let mut streaming_type: Option<String> = None; // "assistant" | "thinking"
 
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
@@ -147,6 +151,8 @@ impl AcpConnection {
                                 params,
                                 &workspace_id,
                                 &app_handle,
+                                &mut streaming_buffer,
+                                &mut streaming_type,
                             );
                         }
                     }
@@ -190,12 +196,15 @@ impl AcpConnection {
         workspace_id: String,
         app_handle: AppHandle,
     ) {
-        let interval = std::time::Duration::from_secs(15);
-        let ping_timeout = std::time::Duration::from_secs(5);
+        // Ping at most every 60s; only send ping if no recent activity (>45s idle)
+        let check_interval = std::time::Duration::from_secs(60);
+        let idle_threshold = std::time::Duration::from_secs(45);
+        let ping_timeout = std::time::Duration::from_secs(10);
         let mut consecutive_failures: u32 = 0;
+        let mut last_activity = std::time::Instant::now();
 
         loop {
-            tokio::time::sleep(interval).await;
+            tokio::time::sleep(check_interval).await;
 
             {
                 let mut guard = child.lock().await;
@@ -222,6 +231,12 @@ impl AcpConnection {
                 } else {
                     return;
                 }
+            }
+
+            // Skip ping if there was recent activity
+            if last_activity.elapsed() < idle_threshold {
+                consecutive_failures = 0;
+                continue;
             }
 
             let id = next_id.fetch_add(1, Ordering::SeqCst);
@@ -256,6 +271,8 @@ impl AcpConnection {
                 Ok(_) => {
                     let latency = start.elapsed().as_millis() as u64;
                     consecutive_failures = 0;
+                    last_activity = std::time::Instant::now();
+                    eprintln!("[acp] Heartbeat OK: workspace={} latency={}ms", workspace_id, latency);
                     let event = HeartbeatEvent {
                         workspace_id: workspace_id.clone(),
                         status: "healthy".to_string(),
@@ -294,12 +311,16 @@ impl AcpConnection {
         params: &serde_json::Value,
         workspace_id: &str,
         app_handle: &AppHandle,
+        streaming_buffer: &mut Option<String>,
+        streaming_type: &mut Option<String>,
     ) {
         let update_type = params
             .get("update")
             .and_then(|u| u.get("sessionUpdate"))
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
+
+        eprintln!("[acp] session_update: workspace={} type={}", workspace_id, update_type);
 
         let session_id = params
             .get("sessionId")
@@ -311,6 +332,61 @@ impl AcpConnection {
             .get("update")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+
+        // Accumulate message chunks into buffer
+        match update_type {
+            "agent_message_chunk" => {
+                if let Some(text) = payload
+                    .get("content")
+                    .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
+                {
+                    let buf = streaming_buffer.get_or_insert_with(String::new);
+                    buf.push_str(text);
+                    *streaming_type = Some("assistant".to_string());
+                }
+            }
+            "agent_thought_chunk" => {
+                if let Some(text) = payload
+                    .get("content")
+                    .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
+                {
+                    let buf = streaming_buffer.get_or_insert_with(String::new);
+                    buf.push_str(text);
+                    *streaming_type = Some("thinking".to_string());
+                }
+            }
+            "end_turn" => {
+                // Persist accumulated buffer to SQLite
+                if let Some(content) = streaming_buffer.take() {
+                    if !content.is_empty() {
+                        let msg_type = streaming_type.take();
+                        eprintln!("[acp] end_turn: session={} persisting {} chars ({:?})", workspace_id, content.len(), msg_type);
+                        // workspace_id is the arandu session_id in per-session connections
+                        if let Ok(db) = app_handle.try_state::<crate::comments::CommentsDb>().ok_or("no db") {
+                            if let Ok(conn) = db.0.lock() {
+                                let _ = crate::messages::save_message(
+                                    &conn,
+                                    workspace_id,
+                                    "assistant",
+                                    &content,
+                                    msg_type.as_deref(),
+                                    None,
+                                    None,
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                }
+                *streaming_type = None;
+            }
+            _ => {
+                if update_type == "unknown" {
+                    eprintln!("[acp] unknown update_type — raw params: {}", serde_json::to_string(params).unwrap_or_default().chars().take(500).collect::<String>());
+                }
+                *streaming_type = None;
+            }
+        }
 
         let event = SessionUpdateEvent {
             workspace_id: workspace_id.to_string(),
@@ -357,6 +433,46 @@ impl AcpConnection {
             .map_err(|_| "Response channel dropped".to_string())?;
 
         result.map_err(|e| e.to_string())
+    }
+
+    /// Send a session/prompt request and persist the user message to SQLite.
+    /// Centralizes user-message persistence so it happens exactly once per send,
+    /// regardless of how many times the frontend invokes the command.
+    pub async fn send_prompt(
+        &self,
+        acp_session_id: String,
+        text: String,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, String> {
+        // Persist user message to DB before sending
+        if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
+            if let Ok(conn) = db.0.lock() {
+                let _ = crate::messages::save_message(
+                    &conn,
+                    &self.workspace_id,
+                    "user",
+                    &text,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+            }
+        }
+
+        let params = crate::acp::types::PromptParams {
+            session_id: acp_session_id,
+            prompt: vec![crate::acp::types::PromptContent {
+                r#type: "text".to_string(),
+                text,
+            }],
+        };
+        self.send_request_with_timeout(
+            "session/prompt",
+            Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+            timeout,
+        )
+        .await
     }
 
     pub async fn send_notification(
