@@ -5,7 +5,7 @@ import { subscribeSession, clearWorkspaceCaches } from "@/lib/session-cache";
 
 const mockInvoke = globalThis.__TAURI__.core.invoke as ReturnType<typeof vi.fn>;
 
-const makeRecord = (id: string, role: "user" | "assistant", content: string, created_at = "2024-01-01T00:00:00Z") => ({
+const makeRecord = (id: string, role: "user" | "assistant", content: string, created_at = 1704067200) => ({
   id,
   session_id: "sess-1",
   role,
@@ -39,7 +39,7 @@ describe("useSessionMessages", () => {
   });
 
   it("maps SQLite records to AcpMessage format", async () => {
-    const records = [makeRecord("uuid-1", "assistant", "Response text", "2024-06-15T12:00:00Z")];
+    const records = [makeRecord("uuid-1", "assistant", "Response text", 1718452800)];
     mockInvoke.mockResolvedValue(records);
 
     const { result } = renderHook(() => useSessionMessages("sess-1"));

@@ -89,7 +89,7 @@ export function MarkdownViewer({
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const review = useComments();
+  const review = useComments(workspace?.id);
   const prevPhaseRef = useRef<PlanPhase | undefined>(phase);
 
   const loadContent = useCallback(async (path: string) => {

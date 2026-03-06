@@ -25,7 +25,7 @@ export function DirectoryWorkspace() {
   const [browsing, setBrowsing] = useState(true);
   const mountedSessionRef = useRef<SessionRecord | null>(null);
 
-  const local = useLocalSessions(workspace?.path ?? "");
+  const local = useLocalSessions(workspace?.id ?? "");
 
   // Track which sessions have active backend ACP instances
   const [connectedSessions, setConnectedSessions] = useState<Set<string>>(new Set());

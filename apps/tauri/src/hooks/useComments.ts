@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 
 const { invoke } = window.__TAURI__.core;
 
-export function useComments() {
+export function useComments(workspaceId?: string) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [fileHash, setFileHash] = useState("");
@@ -27,11 +27,12 @@ export function useComments() {
       };
       await invoke("save_comments", {
         markdownPath: pathRef.current,
+        workspaceId: workspaceId ?? "",
         commentsData: data,
       });
       setSavedHash(hash);
     }).catch(console.error);
-  }, []);
+  }, [workspaceId]);
 
   const loadComments = useCallback(async (path: string) => {
     pathRef.current = path;

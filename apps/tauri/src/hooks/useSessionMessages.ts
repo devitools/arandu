@@ -14,7 +14,7 @@ interface MessageRecord {
   tool_call_id: string | null;
   tool_title: string | null;
   tool_status: string | null;
-  created_at: string;
+  created_at: number;
 }
 
 function toAcpMessage(r: MessageRecord): AcpMessage {
@@ -26,7 +26,7 @@ function toAcpMessage(r: MessageRecord): AcpMessage {
     toolCallId: r.tool_call_id ?? undefined,
     toolTitle: r.tool_title ?? undefined,
     toolStatus: r.tool_status ?? undefined,
-    timestamp: new Date(r.created_at),
+    timestamp: new Date(r.created_at * 1000),
   };
 }
 

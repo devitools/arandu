@@ -264,7 +264,9 @@ export function ActiveSessionView({
     if (!session.id || sizes[0] === 0) return;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      invoke("session_update_chat_panel_size", { id: session.id, size: sizes[0] }).catch(console.error);
+      try {
+        localStorage.setItem(`arandu-chat-panel-size-${session.id}`, String(sizes[0]));
+      } catch { /* ignore */ }
     }, 500);
   }, [session.id]);
 
@@ -272,11 +274,14 @@ export function ActiveSessionView({
     return () => clearTimeout(saveTimerRef.current);
   }, []);
 
-  const chatDefaultSize = useMemo(() => session.chat_panel_size ?? 40, [session.id]);
-  const planDefaultSize = useMemo(() => {
-    if (session.chat_panel_size != null) return 100 - session.chat_panel_size;
-    return 60;
+  const chatDefaultSize = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(`arandu-chat-panel-size-${session.id}`);
+      if (saved) return Number(saved);
+    } catch { /* ignore */ }
+    return 40;
   }, [session.id]);
+  const planDefaultSize = useMemo(() => 100 - chatDefaultSize, [chatDefaultSize]);
 
   const { t } = useTranslation();
   const currentPhase = plan.phase ?? session.phase;

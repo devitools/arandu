@@ -11,14 +11,14 @@ interface UseLocalSessionsReturn {
   refreshSessions: () => Promise<void>;
 }
 
-export function useLocalSessions(workspacePath: string): UseLocalSessionsReturn {
+export function useLocalSessions(workspaceId: string): UseLocalSessionsReturn {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refreshSessions = useCallback(async () => {
     try {
       const result = await invoke<SessionRecord[]>("session_list", {
-        workspacePath,
+        workspaceId,
       });
       setSessions(result);
     } catch (err) {
@@ -26,7 +26,7 @@ export function useLocalSessions(workspacePath: string): UseLocalSessionsReturn 
     } finally {
       setLoading(false);
     }
-  }, [workspacePath]);
+  }, [workspaceId]);
 
   useEffect(() => {
     setLoading(true);
@@ -36,14 +36,14 @@ export function useLocalSessions(workspacePath: string): UseLocalSessionsReturn 
   const createSession = useCallback(
     async (name: string, prompt: string): Promise<SessionRecord> => {
       const record = await invoke<SessionRecord>("session_create", {
-        workspacePath,
+        workspaceId,
         name,
         initialPrompt: prompt,
       });
       setSessions((prev) => [record, ...prev]);
       return record;
     },
-    [workspacePath]
+    [workspaceId]
   );
 
   const updateSessionLocal = useCallback(

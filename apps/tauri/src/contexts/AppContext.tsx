@@ -10,8 +10,8 @@ interface WorkspaceRecord {
   path: string;
   display_name: string;
   workspace_type: string;
-  last_accessed: string;
-  created_at: string;
+  last_accessed: number;
+  created_at: number;
 }
 
 function recordToWorkspace(r: WorkspaceRecord): Workspace {
@@ -20,7 +20,7 @@ function recordToWorkspace(r: WorkspaceRecord): Workspace {
     type: r.workspace_type as "file" | "directory",
     path: r.path,
     displayName: r.display_name,
-    lastAccessed: new Date(r.last_accessed),
+    lastAccessed: new Date(r.last_accessed * 1000),
   };
 }
 
@@ -199,6 +199,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!workspace) return;
 
     await invoke('forget_workspace_data', {
+      workspaceId: workspace.id,
       workspacePath: workspace.path,
       workspaceType: workspace.type,
     });

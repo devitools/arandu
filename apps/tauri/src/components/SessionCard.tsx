@@ -105,7 +105,7 @@ export function SessionCard({ session, onSelect, onDelete, connectionStatus }: S
         </div>
       </div>
       <div className="text-[11px] text-muted-foreground mt-3 text-right">
-        {formatDistanceToNow(new Date(session.updated_at), {
+        {formatDistanceToNow(new Date(session.updated_at * 1000), {
           addSuffix: true,
           locale: getDateLocale(i18n.language),
         })}

@@ -62,7 +62,7 @@ if [ "$#" -eq 0 ]; then open "$APP"; else
 fi
 "#;
 
-const DISMISSED_FILE: &str = ".cli-install-dismissed";
+const DISMISSED_SETTING_KEY: &str = "cli_install_dismissed";
 
 #[derive(Debug, Serialize, Clone)]
 pub struct InstallResult {
@@ -132,13 +132,12 @@ pub fn install_to_dir(dest_dir: &std::path::Path) -> InstallResult {
     }
 }
 
-pub fn has_been_dismissed(app_data_dir: &PathBuf) -> bool {
-    app_data_dir.join(DISMISSED_FILE).exists()
+pub fn has_been_dismissed(conn: &rusqlite::Connection) -> bool {
+    crate::comments::has_setting(conn, DISMISSED_SETTING_KEY)
 }
 
-pub fn set_dismissed(app_data_dir: &PathBuf) {
-    let _ = fs::create_dir_all(app_data_dir);
-    let _ = fs::write(app_data_dir.join(DISMISSED_FILE), "");
+pub fn set_dismissed(conn: &rusqlite::Connection) {
+    let _ = crate::comments::set_setting(conn, DISMISSED_SETTING_KEY, "1");
 }
 
 pub fn install() -> InstallResult {

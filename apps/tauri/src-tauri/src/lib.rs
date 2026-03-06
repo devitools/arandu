@@ -13,7 +13,6 @@ mod acp;
 #[cfg(target_os = "macos")]
 mod cli_installer;
 mod comments;
-mod history;
 mod messages;
 mod plan_file;
 mod sessions;
@@ -185,18 +184,21 @@ fn get_home_dir() -> Option<String> {
 }
 
 #[tauri::command]
-fn check_cli_status(app: tauri::AppHandle) -> CliStatus {
+fn check_cli_status(app: tauri::AppHandle, db: tauri::State<comments::CommentsDb>) -> CliStatus {
     #[cfg(target_os = "macos")]
     {
-        let app_data_dir = app.path().app_data_dir().unwrap_or_default();
+        let _ = app;
+        let dismissed = db.0.lock()
+            .map(|conn| cli_installer::has_been_dismissed(&conn))
+            .unwrap_or(false);
         CliStatus {
             installed: cli_installer::is_cli_installed(),
-            dismissed: cli_installer::has_been_dismissed(&app_data_dir),
+            dismissed,
         }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, db);
         CliStatus {
             installed: true,
             dismissed: true,
@@ -226,15 +228,17 @@ fn install_cli() -> InstallResult {
 }
 
 #[tauri::command]
-fn dismiss_cli_prompt(app: tauri::AppHandle) {
+fn dismiss_cli_prompt(app: tauri::AppHandle, db: tauri::State<comments::CommentsDb>) {
     #[cfg(target_os = "macos")]
     {
-        let app_data_dir = app.path().app_data_dir().unwrap_or_default();
-        cli_installer::set_dismissed(&app_data_dir);
+        let _ = app;
+        if let Ok(conn) = db.0.lock() {
+            cli_installer::set_dismissed(&conn);
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, db);
     }
 }
 
@@ -491,11 +495,12 @@ fn load_comments(
 #[tauri::command]
 fn save_comments(
     markdown_path: String,
+    workspace_id: String,
     comments_data: comments::CommentsData,
     db: tauri::State<comments::CommentsDb>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    comments::save_comments(&conn, &markdown_path, &comments_data)
+    comments::save_comments(&conn, &markdown_path, &workspace_id, &comments_data)
 }
 
 #[tauri::command]
@@ -830,8 +835,6 @@ pub fn run() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             let conn = comments::init_db(&app_data)
                 .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
-            sessions::init_sessions_table(&conn)
-                .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
             app.manage(comments::CommentsDb(Mutex::new(conn)));
 
             let shortcut_str = if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -936,11 +939,6 @@ pub fn run() {
             save_comments,
             count_unresolved_comments,
             hash_file,
-            history::load_history,
-            history::save_history,
-            history::add_to_history,
-            history::remove_from_history,
-            history::clear_history,
             show_whisper_window,
             hide_whisper_window,
             show_settings_window,
@@ -992,10 +990,8 @@ pub fn run() {
             sessions::session_create,
             sessions::session_get,
             sessions::session_update_acp_id,
-            sessions::session_update_plan,
             sessions::session_update_plan_file_path,
             sessions::session_update_phase,
-            sessions::session_update_chat_panel_size,
             sessions::session_delete,
             sessions::forget_workspace_data,
             plan_file::plan_write,

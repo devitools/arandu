@@ -12,26 +12,7 @@ pub struct MessageRecord {
     pub tool_call_id: Option<String>,
     pub tool_title: Option<String>,
     pub tool_status: Option<String>,
-    pub created_at: String,
-}
-
-pub fn init_messages_table(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS messages (
-            id           TEXT PRIMARY KEY,
-            session_id   TEXT NOT NULL,
-            role         TEXT NOT NULL,
-            content      TEXT NOT NULL,
-            message_type TEXT,
-            tool_call_id TEXT,
-            tool_title   TEXT,
-            tool_status  TEXT,
-            created_at   TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_messages_session_time
-            ON messages(session_id, created_at);"
-    )
-    .map_err(|e| format!("Failed to create messages table: {}", e))
+    pub created_at: i64,
 }
 
 pub fn list_messages(
@@ -40,8 +21,6 @@ pub fn list_messages(
     offset: i64,
     limit: i64,
 ) -> Result<Vec<MessageRecord>, String> {
-    // Fetch a page of messages ordered oldest-first within the page,
-    // but use a descending outer query so offset 0 returns the LATEST messages.
     let mut stmt = conn
         .prepare(
             "SELECT id, session_id, role, content, message_type,
@@ -88,7 +67,7 @@ pub fn save_message(
     tool_status: Option<&str>,
 ) -> Result<MessageRecord, String> {
     let id = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = crate::comments::now();
 
     conn.execute(
         "INSERT INTO messages
@@ -109,15 +88,6 @@ pub fn save_message(
         tool_status: tool_status.map(str::to_string),
         created_at: now,
     })
-}
-
-pub fn delete_session_messages(conn: &Connection, session_id: &str) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM messages WHERE session_id = ?1",
-        params![session_id],
-    )
-    .map_err(|e| format!("Delete error: {}", e))?;
-    Ok(())
 }
 
 pub fn count_session_messages(conn: &Connection, session_id: &str) -> Result<i64, String> {
@@ -159,5 +129,7 @@ pub fn messages_delete_session(
     db: tauri::State<CommentsDb>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    delete_session_messages(&conn, &session_id)
+    conn.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])
+        .map_err(|e| format!("Delete error: {}", e))?;
+    Ok(())
 }
