@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AcpMessage } from "@/types/acp";
-import { subscribeSession } from "@/lib/session-cache";
+import { subscribeSession, resetSessionMessages } from "@/lib/session-cache";
 
 const PAGE_SIZE = 50;
 
@@ -37,14 +37,11 @@ export interface UseSessionMessagesReturn {
   isLoadingMore: boolean;
   hasMore: boolean;
   loadMore: () => Promise<void>;
-  addOptimisticMessage: (text: string) => void;
 }
 
 export function useSessionMessages(sessionId: string): UseSessionMessagesReturn {
-  // dbMessages: persisted messages loaded from SQLite (includes optimistic entries)
-  const [dbMessages, setDbMessages] = useState<AcpMessage[]>([]);
-  // liveMessages: current in-progress streaming buffer (cleared on end_turn)
-  const [liveMessages, setLiveMessages] = useState<AcpMessage[]>([]);
+  const [messages, setMessages] = useState<AcpMessage[]>([]);
+  const [streamingMessages, setStreamingMessages] = useState<AcpMessage[]>([]);
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -58,12 +55,13 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
         offset: 0,
         limit: PAGE_SIZE,
       });
+      console.debug("[messages] loadInitial: session=%s loaded=%d", sessionId, records.length);
       offsetRef.current = records.length;
       setHasMore(records.length === PAGE_SIZE);
-      setDbMessages(records.map(toAcpMessage));
-      setLiveMessages([]);
+      setMessages(records.map(toAcpMessage));
+      setStreamingMessages([]);
     } catch (e) {
-      console.error("[useSessionMessages] load error:", e);
+      console.error("[messages] loadInitial error:", e);
     } finally {
       setIsLoadingInitial(false);
     }
@@ -75,20 +73,52 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
     void loadInitial();
   }, [loadInitial]);
 
-  // Subscribe to live streaming chunks from session-cache events
+  useEffect(() => {
+    const unlisten = window.__TAURI__.event.listen<{
+      sessionId: string;
+      id: string;
+      content: string;
+    }>("acp:user-message-saved", (event) => {
+      const { sessionId: msgSessionId, id, content } = event.payload;
+      console.debug("[messages] user-message-saved: session=%s id=%s", msgSessionId, id);
+      if (msgSessionId !== sessionId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === id)) return prev;
+        return [...prev, { id, role: "user", content, timestamp: new Date() }];
+      });
+    });
+    return () => { void unlisten.then((fn) => fn()); };
+  }, [sessionId]);
+
+  useEffect(() => {
+    const unlisten = window.__TAURI__.event.listen<{
+      sessionId: string;
+      messages: MessageRecord[];
+    }>("acp:assistant-message-saved", (event) => {
+      const { sessionId: msgSessionId, messages: records } = event.payload;
+      console.debug("[messages] assistant-message-saved: session=%s count=%d", msgSessionId, records.length);
+      if (msgSessionId !== sessionId) return;
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const newMsgs = records.filter((r) => !existingIds.has(r.id)).map(toAcpMessage);
+        if (newMsgs.length === 0) return prev;
+        return [...prev, ...newMsgs];
+      });
+      setStreamingMessages([]);
+    });
+    return () => { void unlisten.then((fn) => fn()); };
+  }, [sessionId]);
+
   useEffect(() => {
     const unsub = subscribeSession(sessionId, (entry) => {
-      setLiveMessages(entry.messages);
-      // When streaming ends and buffer is cleared, reload from DB
-      if (!entry.isStreaming && entry.messages.length === 0) {
-        setTimeout(() => void loadInitial(), 250);
-      }
+      setStreamingMessages(entry.messages);
     });
-    return unsub;
-  }, [sessionId, loadInitial]);
+    resetSessionMessages(sessionId);
+    return () => { unsub(); };
+  }, [sessionId]);
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+    if (isLoadingInitial || isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
     try {
       const records = await invoke<MessageRecord[]>("messages_list", {
@@ -98,31 +128,28 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
       });
       offsetRef.current += records.length;
       setHasMore(records.length === PAGE_SIZE);
-      setDbMessages((prev) => [...records.map(toAcpMessage), ...prev]);
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const older = records.filter((r) => !existingIds.has(r.id)).map(toAcpMessage);
+        if (older.length === 0) return prev;
+        return [...older, ...prev];
+      });
     } catch (e) {
       console.error("[useSessionMessages] loadMore error:", e);
     } finally {
       setIsLoadingMore(false);
     }
-  }, [sessionId, isLoadingMore, hasMore]);
-
-  // Optimistically add a user message before DB confirmation
-  const addOptimisticMessage = useCallback((text: string) => {
-    const msg: AcpMessage = {
-      id: `opt-${Date.now()}`,
-      role: "user",
-      content: text,
-      timestamp: new Date(),
-    };
-    setDbMessages((prev) => [...prev, msg]);
-  }, []);
+  }, [sessionId, isLoadingInitial, isLoadingMore, hasMore]);
 
   const clearMessages = useCallback(() => {
-    setDbMessages([]);
-    setLiveMessages([]);
+    setMessages([]);
+    setStreamingMessages([]);
   }, []);
 
-  const messages = useMemo(() => [...dbMessages, ...liveMessages], [dbMessages, liveMessages]);
+  const merged = useMemo(() => {
+    if (streamingMessages.length === 0) return messages;
+    return [...messages, ...streamingMessages];
+  }, [messages, streamingMessages]);
 
-  return { messages, isLoadingInitial, isLoadingMore, hasMore, loadMore, addOptimisticMessage, clearMessages };
+  return { messages: merged, isLoadingInitial, isLoadingMore, hasMore, loadMore, clearMessages };
 }

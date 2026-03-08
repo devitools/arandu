@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useSessionConnection } from "@/hooks/useSessionConnection";
+import { renderHook, act, waitFor } from "@testing-library/react";
 
 const mockInvoke = globalThis.__TAURI__.core.invoke as ReturnType<typeof vi.fn>;
 const mockListen = globalThis.__TAURI__.event.listen as ReturnType<typeof vi.fn>;
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
+
+import { useSessionConnection } from "@/hooks/useSessionConnection";
 
 let capturedListeners: Record<string, (event: { payload: unknown }) => void>;
 
@@ -40,9 +45,7 @@ describe("useSessionConnection", () => {
 
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    await act(async () => {
-      await vi.waitFor(() => expect(result.current.status).toBe("connected"));
-    });
+    await waitFor(() => expect(result.current.status).toBe("connected"));
 
     expect(mockInvoke).toHaveBeenCalledWith("acp_session_status", { sessionId: "sess-1" });
     expect(result.current.isConnected).toBe(true);
@@ -128,9 +131,7 @@ describe("useSessionConnection", () => {
   it("responds to acp:session-status events for its sessionId", async () => {
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    await act(async () => {
-      await vi.waitFor(() => expect(capturedListeners["acp:session-status"]).toBeDefined());
-    });
+    await waitFor(() => expect(capturedListeners["acp:session-status"]).toBeDefined());
 
     act(() => {
       capturedListeners["acp:session-status"]({
@@ -145,9 +146,7 @@ describe("useSessionConnection", () => {
   it("ignores acp:session-status events for other sessions", async () => {
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    await act(async () => {
-      await vi.waitFor(() => expect(capturedListeners["acp:session-status"]).toBeDefined());
-    });
+    await waitFor(() => expect(capturedListeners["acp:session-status"]).toBeDefined());
 
     act(() => {
       capturedListeners["acp:session-status"]({

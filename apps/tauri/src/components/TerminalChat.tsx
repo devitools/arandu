@@ -45,18 +45,27 @@ export function TerminalChat({
   const sentinelRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  // Auto-scroll to bottom on new messages (unless user has scrolled up)
-  const lastMessageCount = useRef(0);
+  // Stick-to-bottom: track whether user is near the bottom of the scroll area
+  const isNearBottomRef = useRef(true);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const added = messages.length > lastMessageCount.current;
-    lastMessageCount.current = messages.length;
-    if (!added) return;
+    const handleScroll = () => {
+      isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll on any content change (new messages OR streaming content updates)
+  const prevMessageCountRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
     const lastMsg = messages[messages.length - 1];
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    // Always scroll when the user sends (last message is from user), or when near bottom
-    if (lastMsg?.role === "user" || isAtBottom) {
+    const isNewUserMsg = messages.length > prevMessageCountRef.current && lastMsg?.role === "user";
+    prevMessageCountRef.current = messages.length;
+    if (isNewUserMsg || isNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
