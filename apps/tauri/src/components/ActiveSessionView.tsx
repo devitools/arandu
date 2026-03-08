@@ -10,7 +10,9 @@ import { useAcpLogs } from "@/hooks/useAcpLogs";
 import { usePlanWorkflow } from "@/hooks/usePlanWorkflow";
 import { useSessionMessages } from "@/hooks/useSessionMessages";
 import { useSessionConnection } from "@/hooks/useSessionConnection";
-import { subscribeSession, updateSessionEntry } from "@/lib/session-cache";
+import { subscribeSession, updateSessionEntry, addSystemNotice } from "@/lib/session-cache";
+import { AcpSessionControls } from "@/components/AcpSessionControls";
+import type { AcpSessionMode, AcpSessionConfigOption, AcpPreferences } from "@/types/acp";
 import { ConnectionLogs } from "@/components/ConnectionLogs";
 import type { SessionRecord, PlanPhase } from "@/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertCircle, FileText, Loader2, MessageSquare, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
+import { FileSearch, FileText, Loader2, MessageSquare, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { copyToClipboard } from "@/lib/utils";
 
@@ -48,15 +50,7 @@ interface ActiveSessionViewProps {
   workspaceId: string;
   workspacePath: string;
   session: SessionRecord;
-  /** @deprecated Use internal useSessionConnection(session.id) instead */
-  isConnected?: boolean;
-  /** @deprecated */
-  isConnecting?: boolean;
   onPhaseChange?: (sessionId: string, phase: PlanPhase) => void;
-  /** @deprecated */
-  onConnect?: () => Promise<void>;
-  /** @deprecated */
-  onDisconnect?: () => Promise<void>;
   onMinimize?: () => void;
 }
 
@@ -64,11 +58,7 @@ export function ActiveSessionView({
   workspaceId,
   workspacePath,
   session,
-  isConnected: isConnectedProp,
-  isConnecting: isConnectingProp,
   onPhaseChange,
-  onConnect,
-  onDisconnect,
   onMinimize,
 }: ActiveSessionViewProps) {
   const initRef = useRef(false);
@@ -76,22 +66,23 @@ export function ActiveSessionView({
   const planPanelRef = useRef<ImperativePanelHandle>(null);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [planCollapsed, setPlanCollapsed] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   // Per-session connection (new architecture)
   const sessionConn = useSessionConnection(session.id);
   // Per-session messages loaded from SQLite (new architecture)
   const sessionMessages = useSessionMessages(session.id);
 
-  // Resolved connection state (new arch takes precedence over legacy props)
-  const isConnected = sessionConn.status !== "idle" ? sessionConn.isConnected : (isConnectedProp ?? false);
-  const isConnecting = sessionConn.isConnecting || (isConnectingProp ?? false);
+  const isConnected = sessionConn.isConnected;
+  const isConnecting = sessionConn.isConnecting;
 
   // Streaming state from session-cache (new arch events keyed by session.id)
   const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentMode, setCurrentMode] = useState<string | null>(null);
-  const [availableModes, setAvailableModes] = useState<string[]>([]);
+  const [availableModes, setAvailableModes] = useState<AcpSessionMode[]>([]);
+  const [availableConfigOptions, setAvailableConfigOptions] = useState<AcpSessionConfigOption[]>([]);
+  const [selectedConfigOptions, setSelectedConfigOptions] = useState<Record<string, string>>({});
   const [agentPlanFilePath, setAgentPlanFilePath] = useState<string | null>(null);
   const [activeAcpSessionId, setActiveAcpSessionId] = useState<string | null>(
     session.acp_session_id ?? null
@@ -102,6 +93,8 @@ export function ActiveSessionView({
     const unsub = subscribeSession(session.id, (entry) => {
       setCurrentMode(entry.currentMode);
       setAvailableModes(entry.availableModes);
+      setAvailableConfigOptions(entry.availableConfigOptions);
+      setSelectedConfigOptions(entry.selectedConfigOptions);
       setAgentPlanFilePath(entry.agentPlanFilePath);
       if (entry.activeAcpSessionId) setActiveAcpSessionId(entry.activeAcpSessionId);
       if (entry.isStreaming) {
@@ -124,23 +117,57 @@ export function ActiveSessionView({
 
   // Core ACP actions using new per-session commands
   const sendPrompt = useCallback(async (text: string) => {
-    sessionMessages.addOptimisticMessage(text);
     try {
       await invoke("acp_session_send_prompt", { sessionId: session.id, text });
     } catch (e) {
       setErrors((prev) => [...prev, String(e)]);
       updateSessionEntry(session.id, { isStreaming: false });
     }
-  }, [session.id, sessionMessages]);
+  }, [session.id]);
 
-  const setMode = useCallback(async (mode: string) => {
+  const persistPreferences = useCallback((partial: Partial<AcpPreferences>) => {
+    try {
+      const raw = session.acp_preferences_json || "{}";
+      const current: AcpPreferences = JSON.parse(raw);
+      const updated = { ...current, ...partial };
+      invoke("session_update_acp_preferences", {
+        id: session.id,
+        acpPreferencesJson: JSON.stringify(updated),
+      }).catch(console.error);
+      invoke("workspace_acp_defaults_set", {
+        workspacePath,
+        acpPreferencesJson: JSON.stringify(updated),
+      }).catch(console.error);
+    } catch { /* ignore */ }
+  }, [session.id, session.acp_preferences_json, workspacePath]);
+
+  const setMode = useCallback(async (mode: string, options?: { origin?: "user" | "workflow" }): Promise<boolean> => {
     try {
       await invoke("acp_session_set_mode", { sessionId: session.id, mode });
       updateSessionEntry(session.id, { currentMode: mode });
+      if ((options?.origin ?? "user") === "user") {
+        persistPreferences({ modeId: mode });
+      }
+      return true;
+    } catch (e) {
+      setErrors((prev) => [...prev, String(e)]);
+      return false;
+    }
+  }, [session.id, persistPreferences]);
+
+  const setConfigOption = useCallback(async (configId: string, optionId: string) => {
+    try {
+      await invoke("acp_session_set_config_option", { sessionId: session.id, configId, optionId });
+      setSelectedConfigOptions((prev) => {
+        const updated = { ...prev, [configId]: optionId };
+        updateSessionEntry(session.id, { selectedConfigOptions: updated });
+        persistPreferences({ selectedConfigOptions: updated });
+        return updated;
+      });
     } catch (e) {
       setErrors((prev) => [...prev, String(e)]);
     }
-  }, [session.id]);
+  }, [session.id, persistPreferences]);
 
   const cancel = useCallback(async () => {
     try {
@@ -164,6 +191,16 @@ export function ActiveSessionView({
     }
   }, [session.id, sessionMessages]);
 
+  const handleAutoSwitchMode = useCallback((modeId: string) => {
+    const mode = availableModes.find((m) => m.id === modeId);
+    const label = mode?.name ?? modeId.split("#").pop() ?? modeId;
+    addSystemNotice(session.id, t("acp.autoSwitchNotice", { mode: label }));
+  }, [availableModes, session.id, t]);
+
+  const handleSelectMode = useCallback((modeId: string) => {
+    setMode(modeId, { origin: "user" });
+  }, [setMode]);
+
   const plan = usePlanWorkflow({
     workspaceId,
     workspacePath,
@@ -180,27 +217,19 @@ export function ActiveSessionView({
     onPhaseChange: onPhaseChange
       ? (phase) => onPhaseChange(session.id, phase)
       : undefined,
+    onAutoSwitchMode: handleAutoSwitchMode,
   });
 
-  const handleConnect = useCallback(async () => {
+  const handleConnect = useCallback(() => {
     initRef.current = false;
-    if (onConnect) {
-      await onConnect();
-    } else {
-      doInitRef.current();
-    }
-  }, [onConnect]);
+    doInitRef.current();
+  }, []);
 
   const handleDisconnect = useCallback(async () => {
-    if (onDisconnect) {
-      await onDisconnect();
-    } else {
-      await sessionConn.disconnect();
-    }
-  }, [onDisconnect, sessionConn]);
+    await sessionConn.disconnect();
+  }, [sessionConn]);
 
   const doInit = useCallback(async () => {
-    setInitError(null);
     try {
       const isNewSession = !session.acp_session_id;
       // acp_session_connect handles both new and resume cases
@@ -222,6 +251,28 @@ export function ActiveSessionView({
         });
       }
 
+      if (isNewSession) {
+        try {
+          const raw = session.acp_preferences_json || "{}";
+          const prefs: AcpPreferences = JSON.parse(raw);
+          if (!prefs.modeId) {
+            const defaults = await invoke<string | null>("workspace_acp_defaults_get", { workspacePath });
+            if (defaults) {
+              const wPrefs: AcpPreferences = JSON.parse(defaults);
+              if (wPrefs.modeId) prefs.modeId = wPrefs.modeId;
+              if (wPrefs.selectedConfigOptions) {
+                prefs.selectedConfigOptions = { ...wPrefs.selectedConfigOptions, ...prefs.selectedConfigOptions };
+              }
+            }
+          }
+          if (prefs.selectedConfigOptions) {
+            for (const [configId, optionId] of Object.entries(prefs.selectedConfigOptions)) {
+              invoke("acp_session_set_config_option", { sessionId: session.id, configId, optionId }).catch(console.error);
+            }
+          }
+        } catch { /* ignore preference errors */ }
+      }
+
       if (session.phase === "idle") {
         const prompt = isNewSession && session.name
           ? `${session.name}\n\n${session.initial_prompt}`
@@ -230,11 +281,11 @@ export function ActiveSessionView({
       }
     } catch (e) {
       console.error("[ActiveSessionView] init error:", e);
-      setInitError(String(e));
+      setErrors((prev) => [...prev, String(e)]);
     }
   }, [sessionConn, workspacePath, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, plan.startPlanning]);
 
-  // Auto-init: connect + send initial prompt on mount (or when session changes)
+  // Auto-init: connect + send the initial prompt on mount (or when the session changes)
   const doInitRef = useRef(doInit);
   doInitRef.current = doInit;
   useEffect(() => {
@@ -243,18 +294,23 @@ export function ActiveSessionView({
     doInitRef.current();
   }, [session.id]); // run once per session
 
-  // Reset initRef when session ACP id is cleared (allows re-init on reconnect)
+  // Reset initRef only when acp_session_id transitions from set → cleared (disconnect),
+  // NOT on the initial mount with null (which would cause double-init in React 18 StrictMode)
+  const prevAcpIdRef = useRef(session.acp_session_id);
   useEffect(() => {
-    if (!session.acp_session_id) initRef.current = false;
+    if (prevAcpIdRef.current && !session.acp_session_id) {
+      initRef.current = false;
+    }
+    prevAcpIdRef.current = session.acp_session_id;
   }, [session.acp_session_id]);
 
   const handleReconnect = useCallback(async () => {
     initRef.current = false;
-    setInitError(null);
+    clearErrors();
     try {
       await handleDisconnect();
     } catch (e) {
-      console.warn("[ActiveSessionView] disconnect during reconnect failed:", e);
+      console.warn("[ActiveSessionView] disconnect during reconnection failed:", e);
     }
     await handleConnect();
   }, [handleDisconnect, handleConnect]);
@@ -283,7 +339,6 @@ export function ActiveSessionView({
   }, [session.id]);
   const planDefaultSize = useMemo(() => 100 - chatDefaultSize, [chatDefaultSize]);
 
-  const { t } = useTranslation();
   const currentPhase = plan.phase ?? session.phase;
 
   const handleToggleChat = useCallback(() => {
@@ -294,13 +349,18 @@ export function ActiveSessionView({
     }
   }, []);
 
-  const handleTogglePlan = useCallback(() => {
+  const handleTogglePlan = useCallback(async () => {
+    if (!plan.planFilePath) {
+      const found = await plan.locatePlan();
+      if (found) planPanelRef.current?.expand();
+      return;
+    }
     if (planPanelRef.current?.isCollapsed()) {
       planPanelRef.current.expand();
     } else {
       planPanelRef.current?.collapse();
     }
-  }, []);
+  }, [plan.planFilePath, plan.locatePlan]);
 
   const handlePhaseSelect = useCallback((phase: PlanPhase) => {
     plan.setPhase(phase);
@@ -311,19 +371,6 @@ export function ActiveSessionView({
       invoke("session_update_phase", { id: session.id, phase }).catch(console.error);
     }
   }, [plan.setPhase, onPhaseChange, session.id]);
-
-  if (initError) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
-        <AlertCircle className="h-10 w-10 text-destructive" />
-        <p className="text-sm text-muted-foreground text-center max-w-md">{initError}</p>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleReconnect}>
-          <RefreshCw className="h-3.5 w-3.5" />
-          {t("acp.reconnect")}
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -359,6 +406,17 @@ export function ActiveSessionView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {isConnected && (
+            <AcpSessionControls
+              disabled={!isConnected}
+              currentModeId={currentMode}
+              availableModes={availableModes}
+              configOptions={availableConfigOptions}
+              selectedConfigOptions={selectedConfigOptions}
+              onSelectMode={handleSelectMode}
+              onSelectConfigOption={setConfigOption}
+            />
+          )}
           {isConnecting ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -396,17 +454,19 @@ export function ActiveSessionView({
           >
             <MessageSquare className="h-3.5 w-3.5" />
           </Button>
-          {plan.planFilePath && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-7 w-7 ${planCollapsed ? "text-muted-foreground/40" : "text-muted-foreground"} hover:text-foreground`}
-              onClick={handleTogglePlan}
-              title={t("sessions.togglePlan")}
-            >
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-7 w-7 ${!plan.planFilePath ? "text-muted-foreground/40" : planCollapsed ? "text-muted-foreground/40" : "text-muted-foreground"} hover:text-foreground`}
+            onClick={handleTogglePlan}
+            title={plan.planFilePath ? t("sessions.togglePlan") : t("sessions.locatePlan")}
+          >
+            {plan.planFilePath ? (
               <FileText className="h-3.5 w-3.5" />
-            </Button>
-          )}
+            ) : (
+              <FileSearch className="h-3.5 w-3.5" />
+            )}
+          </Button>
           <ConnectionLogs
             logs={acpLogs.logs}
             hasRecentErrors={acpLogs.hasRecentErrors}
