@@ -78,7 +78,8 @@
     "deleteSessionDescription": "Delete <strong>{{name}}</strong>? This action cannot be undone.",
     "deleteSession": "Delete",
     "toggleChat": "Show/hide chat",
-    "togglePlan": "Show/hide plan"
+    "togglePlan": "Show/hide plan",
+    "locatePlan": "Locate plan"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -103,6 +104,13 @@
     "logsEmpty": "No connection events recorded",
     "logsClear": "Clear",
     "logsCopy": "Copy",
+    "modeLabel": "Mode",
+    "modelLabel": "Model",
+    "agentLabel": "Agent",
+    "advancedLabel": "Advanced",
+    "advancedAvailable": "{{count}} available",
+    "unavailableFromAcp": "Unavailable from ACP",
+    "autoSwitchNotice": "Auto-switched mode to {{mode}}.",
     "modeAsk": "Ask",
     "modePlan": "Plan",
     "modeCode": "Code",

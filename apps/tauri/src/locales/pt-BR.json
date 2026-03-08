@@ -78,7 +78,8 @@
     "deleteSessionDescription": "Deseja excluir a sessão <strong>{{name}}</strong>? Esta ação não pode ser desfeita.",
     "deleteSession": "Excluir",
     "toggleChat": "Mostrar/ocultar chat",
-    "togglePlan": "Mostrar/ocultar plano"
+    "togglePlan": "Mostrar/ocultar plano",
+    "locatePlan": "Localizar plano"
   },
   "theme": {
     "toggle": "Alternar tema",
@@ -103,6 +104,13 @@
     "logsEmpty": "Nenhum evento de conexão registrado",
     "logsClear": "Limpar",
     "logsCopy": "Copiar",
+    "modeLabel": "Modo",
+    "modelLabel": "Modelo",
+    "agentLabel": "Agente",
+    "advancedLabel": "Avançado",
+    "advancedAvailable": "{{count}} disponíveis",
+    "unavailableFromAcp": "Indisponível no ACP",
+    "autoSwitchNotice": "Modo alterado automaticamente para {{mode}}.",
     "modeAsk": "Perguntar",
     "modePlan": "Plano",
     "modeCode": "Código",
