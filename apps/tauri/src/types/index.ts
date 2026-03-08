@@ -61,6 +61,7 @@ export interface SessionRecord {
   initial_prompt: string;
   plan_file_path: string | null;
   phase: PlanPhase;
+  acp_preferences_json: string;
   created_at: number;
   updated_at: number;
 }
