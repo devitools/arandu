@@ -10,34 +10,38 @@ pub struct SessionRecord {
     pub initial_prompt: String,
     pub plan_file_path: Option<String>,
     pub phase: String,
+    pub acp_preferences_json: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
+fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<SessionRecord> {
+    Ok(SessionRecord {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        acp_session_id: row.get(2)?,
+        name: row.get(3)?,
+        initial_prompt: row.get(4)?,
+        plan_file_path: row.get(5)?,
+        phase: row.get(6)?,
+        acp_preferences_json: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+const SESSION_COLUMNS: &str = "id, workspace_id, acp_session_id, name, initial_prompt, plan_file_path, phase, acp_preferences_json, created_at, updated_at";
+
 pub fn list_sessions(conn: &Connection, workspace_id: &str) -> Result<Vec<SessionRecord>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, acp_session_id, name, initial_prompt,
-                    plan_file_path, phase, created_at, updated_at
-             FROM sessions WHERE workspace_id = ?1
-             ORDER BY updated_at DESC"
-        )
+    let sql = format!(
+        "SELECT {} FROM sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC",
+        SESSION_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)
         .map_err(|e| format!("Query prepare error: {}", e))?;
 
     let rows = stmt
-        .query_map(params![workspace_id], |row| {
-            Ok(SessionRecord {
-                id: row.get(0)?,
-                workspace_id: row.get(1)?,
-                acp_session_id: row.get(2)?,
-                name: row.get(3)?,
-                initial_prompt: row.get(4)?,
-                plan_file_path: row.get(5)?,
-                phase: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        })
+        .query_map(params![workspace_id], row_to_session)
         .map_err(|e| format!("Query error: {}", e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Row error: {}", e))?;
@@ -46,26 +50,9 @@ pub fn list_sessions(conn: &Connection, workspace_id: &str) -> Result<Vec<Sessio
 }
 
 pub fn get_session(conn: &Connection, id: &str) -> Result<SessionRecord, String> {
-    conn.query_row(
-        "SELECT id, workspace_id, acp_session_id, name, initial_prompt,
-                plan_file_path, phase, created_at, updated_at
-         FROM sessions WHERE id = ?1",
-        params![id],
-        |row| {
-            Ok(SessionRecord {
-                id: row.get(0)?,
-                workspace_id: row.get(1)?,
-                acp_session_id: row.get(2)?,
-                name: row.get(3)?,
-                initial_prompt: row.get(4)?,
-                plan_file_path: row.get(5)?,
-                phase: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        },
-    )
-    .map_err(|e| format!("Session not found: {}", e))
+    let sql = format!("SELECT {} FROM sessions WHERE id = ?1", SESSION_COLUMNS);
+    conn.query_row(&sql, params![id], row_to_session)
+        .map_err(|e| format!("Session not found: {}", e))
 }
 
 pub fn create_session(
@@ -122,6 +109,39 @@ pub fn update_plan_file_path(conn: &Connection, id: &str, plan_file_path: &str) 
         params![plan_file_path, now, id],
     )
     .map_err(|e| format!("Update plan_file_path error: {}", e))?;
+    Ok(())
+}
+
+pub fn update_acp_preferences(conn: &Connection, id: &str, json: &str) -> Result<(), String> {
+    let now = crate::comments::now();
+    conn.execute(
+        "UPDATE sessions SET acp_preferences_json = ?1, updated_at = ?2 WHERE id = ?3",
+        params![json, now, id],
+    )
+    .map_err(|e| format!("Update acp_preferences error: {}", e))?;
+    Ok(())
+}
+
+pub fn get_workspace_acp_defaults(conn: &Connection, workspace_path: &str) -> Result<Option<String>, String> {
+    match conn.query_row(
+        "SELECT preferences_json FROM workspace_acp_defaults WHERE workspace_path = ?1",
+        params![workspace_path],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(json) => Ok(Some(json)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Query error: {}", e)),
+    }
+}
+
+pub fn set_workspace_acp_defaults(conn: &Connection, workspace_path: &str, json: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO workspace_acp_defaults (workspace_path, preferences_json)
+         VALUES (?1, ?2)
+         ON CONFLICT(workspace_path) DO UPDATE SET preferences_json = excluded.preferences_json",
+        params![workspace_path, json],
+    )
+    .map_err(|e| format!("Upsert workspace_acp_defaults error: {}", e))?;
     Ok(())
 }
 
@@ -338,6 +358,10 @@ pub fn forget_workspace_data(
             conn.execute("DELETE FROM sessions WHERE workspace_id = ?1", params![workspace_id])
                 .map_err(|e| format!("Delete sessions error: {}", e))?;
 
+            // Delete workspace ACP defaults
+            conn.execute("DELETE FROM workspace_acp_defaults WHERE workspace_path = ?1", params![workspace_path])
+                .map_err(|e| format!("Delete workspace_acp_defaults error: {}", e))?;
+
             // Clean up plan files from disk
             let app_data = app.path().app_data_dir()
                 .map_err(|e| format!("Failed to get app data dir: {}", e))?;
@@ -382,4 +406,33 @@ pub fn workspace_touch(id: String, db: tauri::State<CommentsDb>) -> Result<(), S
 pub fn workspace_delete(id: String, db: tauri::State<CommentsDb>) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     delete_workspace(&conn, &id)
+}
+
+#[tauri::command]
+pub fn session_update_acp_preferences(
+    id: String,
+    acp_preferences_json: String,
+    db: tauri::State<CommentsDb>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    update_acp_preferences(&conn, &id, &acp_preferences_json)
+}
+
+#[tauri::command]
+pub fn workspace_acp_defaults_get(
+    workspace_path: String,
+    db: tauri::State<CommentsDb>,
+) -> Result<Option<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    get_workspace_acp_defaults(&conn, &workspace_path)
+}
+
+#[tauri::command]
+pub fn workspace_acp_defaults_set(
+    workspace_path: String,
+    acp_preferences_json: String,
+    db: tauri::State<CommentsDb>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    set_workspace_acp_defaults(&conn, &workspace_path, &acp_preferences_json)
 }

@@ -73,6 +73,21 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<Connection, String> {
         create_schema_v2(&conn)?;
     }
 
+    if has_table(&conn, "sessions") && !has_column(&conn, "sessions", "acp_preferences_json") {
+        conn.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN acp_preferences_json TEXT NOT NULL DEFAULT '{}';"
+        ).map_err(|e| format!("Failed to add acp_preferences_json column: {}", e))?;
+    }
+
+    if !has_table(&conn, "workspace_acp_defaults") {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS workspace_acp_defaults (
+                workspace_path  TEXT    PRIMARY KEY,
+                preferences_json TEXT   NOT NULL DEFAULT '{}'
+            );"
+        ).map_err(|e| format!("Failed to create workspace_acp_defaults table: {}", e))?;
+    }
+
     Ok(conn)
 }
 
@@ -98,10 +113,16 @@ fn create_schema_v2(conn: &Connection) -> Result<(), String> {
             plan_file_path  TEXT,
             phase           TEXT    NOT NULL DEFAULT 'idle'
                                     CHECK (phase IN ('idle', 'planning', 'reviewing', 'executing', 'done')),
+            acp_preferences_json TEXT NOT NULL DEFAULT '{}',
             created_at      INTEGER NOT NULL,
             updated_at      INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS workspace_acp_defaults (
+            workspace_path  TEXT    PRIMARY KEY,
+            preferences_json TEXT   NOT NULL DEFAULT '{}'
+        );
 
         CREATE TABLE IF NOT EXISTS messages (
             id              TEXT    PRIMARY KEY,

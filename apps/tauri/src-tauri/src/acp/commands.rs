@@ -432,6 +432,8 @@ pub async fn acp_session_connect(
 
     // Create or load the ACP session
     let info: SessionInfo = if let Some(ref existing_id) = acp_session_id {
+        // Suppress replay messages from session/load — the frontend loads history from SQLite
+        conn.set_suppress_updates(true);
         let params = LoadSessionParams {
             session_id: existing_id.clone(),
             cwd: workspace_path.clone(),
@@ -463,6 +465,28 @@ pub async fn acp_session_connect(
 
     conn.emit_status("connected", None);
     conn.emit_log("info", "connect", &format!("Session connected via {}", binary));
+
+    {
+        let mut payload = serde_json::json!({});
+        if let Some(ref modes) = info.modes {
+            payload["availableModes"] = serde_json::to_value(&modes.available_modes).unwrap_or_default();
+            payload["currentModeId"] = serde_json::json!(modes.current_mode_id);
+        }
+        if let Some(ref config_val) = info.config_options {
+            if let Some(opts) = config_val.get("availableConfigOptions") {
+                payload["availableConfigOptions"] = opts.clone();
+            }
+            if let Some(sel) = config_val.get("selectedConfigOptions") {
+                payload["selectedConfigOptions"] = sel.clone();
+            }
+        }
+        let _ = app_handle.emit("acp:session-update", SessionUpdateEvent {
+            workspace_id: session_id.clone(),
+            session_id: copilot_session_id.clone(),
+            update_type: "session_info_update".to_string(),
+            payload,
+        });
+    }
 
     let instance = AcpSessionInstance {
         connection: Arc::new(conn),
@@ -561,6 +585,24 @@ pub async fn acp_session_set_mode(
     };
     let params = SetSessionModeParams { session_id: acp_id, mode_id: mode };
     conn.send_request("session/set_mode", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn acp_session_set_config_option(
+    session_id: String,
+    config_id: String,
+    option_id: String,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    let (conn, acp_id) = {
+        let instances = store.instances.lock().await;
+        let inst = instances.get(&session_id).ok_or("Session not connected")?;
+        (Arc::clone(&inst.connection), inst.acp_session_id.clone())
+    };
+    let params = SetConfigOptionParams { session_id: acp_id, config_id, value: option_id };
+    conn.send_request("session/set_config_option", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
         .await?;
     Ok(())
 }
