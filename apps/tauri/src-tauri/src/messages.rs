@@ -90,6 +90,64 @@ pub fn save_message(
     })
 }
 
+pub fn update_message_by_tool_call_id(
+    conn: &Connection,
+    session_id: &str,
+    tool_call_id: &str,
+    content: Option<&str>,
+    tool_status: &str,
+) -> Result<MessageRecord, String> {
+    if let Some(new_content) = content {
+        conn.execute(
+            "UPDATE messages SET content = ?1, tool_status = ?2
+             WHERE session_id = ?3 AND tool_call_id = ?4",
+            params![new_content, tool_status, session_id, tool_call_id],
+        )
+        .map_err(|e| format!("Update error: {}", e))?;
+    } else {
+        conn.execute(
+            "UPDATE messages SET tool_status = ?1
+             WHERE session_id = ?2 AND tool_call_id = ?3",
+            params![tool_status, session_id, tool_call_id],
+        )
+        .map_err(|e| format!("Update error: {}", e))?;
+    }
+
+    conn.query_row(
+        "SELECT id, session_id, role, content, message_type,
+                tool_call_id, tool_title, tool_status, created_at
+         FROM messages
+         WHERE session_id = ?1 AND tool_call_id = ?2",
+        params![session_id, tool_call_id],
+        |row| {
+            Ok(MessageRecord {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                role: row.get(2)?,
+                content: row.get(3)?,
+                message_type: row.get(4)?,
+                tool_call_id: row.get(5)?,
+                tool_title: row.get(6)?,
+                tool_status: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        },
+    )
+    .map_err(|e| format!("Query error after update: {}", e))
+}
+
+pub fn is_duplicate_user_message(conn: &Connection, session_id: &str, content: &str) -> bool {
+    conn.query_row(
+        "SELECT content FROM messages
+         WHERE session_id = ?1 AND role = 'user'
+         ORDER BY created_at DESC LIMIT 1",
+        params![session_id],
+        |row| row.get::<_, String>(0),
+    )
+    .map(|last| last == content)
+    .unwrap_or(false)
+}
+
 pub fn count_session_messages(conn: &Connection, session_id: &str) -> Result<i64, String> {
     conn.query_row(
         "SELECT COUNT(*) FROM messages WHERE session_id = ?1",

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -7,9 +7,59 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::types::*;
+use crate::messages::MessageRecord;
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, JsonRpcError>>>>>;
 type ChildRef = Arc<Mutex<Option<Child>>>;
+
+fn save_to_db(
+    saved: &mut Vec<MessageRecord>,
+    workspace_id: &str,
+    app_handle: &AppHandle,
+    role: &str,
+    content: &str,
+    message_type: Option<&str>,
+    tool_call_id: Option<&str>,
+    tool_title: Option<&str>,
+    tool_status: Option<&str>,
+) {
+    if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+        if let Ok(conn) = db.0.lock() {
+            match crate::messages::save_message(
+                &conn, workspace_id, role, content,
+                message_type, tool_call_id, tool_title, tool_status,
+            ) {
+                Ok(record) => {
+                    eprintln!("[acp] save_to_db: id={} type={:?} len={}", record.id, record.message_type, content.len());
+                    saved.push(record);
+                }
+                Err(e) => eprintln!("[acp] save_to_db error: {}", e),
+            }
+        }
+    }
+}
+
+fn flush_buffer(
+    streaming_buffer: &mut Option<String>,
+    streaming_type: &mut Option<String>,
+    saved: &mut Vec<MessageRecord>,
+    workspace_id: &str,
+    app_handle: &AppHandle,
+) {
+    let content = match streaming_buffer.take() {
+        Some(c) if !c.is_empty() => c,
+        _ => {
+            *streaming_type = None;
+            return;
+        }
+    };
+    let msg_type = streaming_type.take();
+    save_to_db(
+        saved, workspace_id, app_handle,
+        "assistant", &content,
+        msg_type.as_deref(), None, None, None,
+    );
+}
 
 pub struct AcpConnection {
     child: ChildRef,
@@ -21,6 +71,7 @@ pub struct AcpConnection {
     heartbeat_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     app_handle: AppHandle,
     workspace_id: String,
+    suppress_updates: Arc<AtomicBool>,
 }
 
 impl AcpConnection {
@@ -53,6 +104,7 @@ impl AcpConnection {
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+        let suppress_updates = Arc::new(AtomicBool::new(false));
         let (writer_tx, writer_rx) = mpsc::channel::<String>(64);
 
         let writer_handle = tokio::spawn(Self::writer_task(stdin, writer_rx));
@@ -62,6 +114,7 @@ impl AcpConnection {
             writer_tx.clone(),
             workspace_id.clone(),
             app_handle.clone(),
+            suppress_updates.clone(),
         ));
 
         let child_arc: ChildRef = Arc::new(Mutex::new(Some(child)));
@@ -85,6 +138,7 @@ impl AcpConnection {
             heartbeat_handle: Mutex::new(Some(heartbeat_handle)),
             app_handle,
             workspace_id,
+            suppress_updates,
         })
     }
 
@@ -108,12 +162,13 @@ impl AcpConnection {
         writer_tx: mpsc::Sender<String>,
         workspace_id: String,
         app_handle: AppHandle,
+        suppress_updates: Arc<AtomicBool>,
     ) {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
-        // Buffer to accumulate streaming assistant message chunks until end_turn
         let mut streaming_buffer: Option<String> = None;
-        let mut streaming_type: Option<String> = None; // "assistant" | "thinking"
+        let mut streaming_type: Option<String> = None;
+        let mut saved_this_turn: Vec<MessageRecord> = Vec::new();
 
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
@@ -153,6 +208,8 @@ impl AcpConnection {
                                 &app_handle,
                                 &mut streaming_buffer,
                                 &mut streaming_type,
+                                &mut saved_this_turn,
+                                &suppress_updates,
                             );
                         }
                     }
@@ -313,14 +370,14 @@ impl AcpConnection {
         app_handle: &AppHandle,
         streaming_buffer: &mut Option<String>,
         streaming_type: &mut Option<String>,
+        saved_this_turn: &mut Vec<MessageRecord>,
+        suppress_updates: &Arc<AtomicBool>,
     ) {
         let update_type = params
             .get("update")
             .and_then(|u| u.get("sessionUpdate"))
             .and_then(|s| s.as_str())
             .unwrap_or("unknown");
-
-        eprintln!("[acp] session_update: workspace={} type={}", workspace_id, update_type);
 
         let session_id = params
             .get("sessionId")
@@ -333,13 +390,28 @@ impl AcpConnection {
             .cloned()
             .unwrap_or(serde_json::Value::Null);
 
-        // Accumulate message chunks into buffer
+        let suppressed = suppress_updates.load(Ordering::Acquire);
+        eprintln!("[acp] session_update: workspace={} type={} suppressed={} saved={}", workspace_id, update_type, suppressed, saved_this_turn.len());
+
+        if suppressed {
+            if update_type == "end_turn" {
+                streaming_buffer.take();
+                *streaming_type = None;
+                saved_this_turn.clear();
+                eprintln!("[acp] end_turn: session={} suppressed (replay drain)", workspace_id);
+            }
+            return;
+        }
+
         match update_type {
             "agent_message_chunk" => {
                 if let Some(text) = payload
                     .get("content")
                     .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
                 {
+                    if *streaming_type == Some("thinking".to_string()) {
+                        flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                    }
                     let buf = streaming_buffer.get_or_insert_with(String::new);
                     buf.push_str(text);
                     *streaming_type = Some("assistant".to_string());
@@ -350,41 +422,72 @@ impl AcpConnection {
                     .get("content")
                     .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
                 {
+                    if *streaming_type == Some("assistant".to_string()) {
+                        flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                    }
                     let buf = streaming_buffer.get_or_insert_with(String::new);
                     buf.push_str(text);
                     *streaming_type = Some("thinking".to_string());
                 }
             }
-            "end_turn" => {
-                // Persist accumulated buffer to SQLite
-                if let Some(content) = streaming_buffer.take() {
-                    if !content.is_empty() {
-                        let msg_type = streaming_type.take();
-                        eprintln!("[acp] end_turn: session={} persisting {} chars ({:?})", workspace_id, content.len(), msg_type);
-                        // workspace_id is the arandu session_id in per-session connections
-                        if let Ok(db) = app_handle.try_state::<crate::comments::CommentsDb>().ok_or("no db") {
-                            if let Ok(conn) = db.0.lock() {
-                                let _ = crate::messages::save_message(
-                                    &conn,
-                                    workspace_id,
-                                    "assistant",
-                                    &content,
-                                    msg_type.as_deref(),
-                                    None,
-                                    None,
-                                    None,
-                                );
+            "tool_call" => {
+                flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("Tool call");
+                let tool_call_id = payload.get("toolCallId").and_then(|v| v.as_str());
+                let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+                save_to_db(
+                    saved_this_turn, workspace_id, app_handle,
+                    "assistant", "",
+                    Some("tool"), tool_call_id, Some(title), Some(status),
+                );
+            }
+            "tool_call_update" => {
+                let tool_call_id = payload.get("toolCallId").and_then(|v| v.as_str());
+                let status = payload.get("status").and_then(|v| v.as_str());
+                if let (Some(tcid), Some(st)) = (tool_call_id, status) {
+                    let mut new_content: Option<String> = None;
+                    if st == "completed" {
+                        if let Some(summary) = payload.get("rawOutput")
+                            .and_then(|o| o.get("content"))
+                            .and_then(|c| c.as_str())
+                        {
+                            new_content = Some(summary.to_string());
+                        }
+                    }
+                    if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+                        if let Ok(conn) = db.0.lock() {
+                            match crate::messages::update_message_by_tool_call_id(
+                                &conn, workspace_id, tcid,
+                                new_content.as_deref(), st,
+                            ) {
+                                Ok(updated) => {
+                                    if let Some(record) = saved_this_turn.iter_mut().rev()
+                                        .find(|r| r.tool_call_id.as_deref() == Some(tcid))
+                                    {
+                                        *record = updated;
+                                    }
+                                }
+                                Err(e) => eprintln!("[acp] tool_call_update: update error: {}", e),
                             }
                         }
                     }
                 }
-                *streaming_type = None;
+            }
+            "end_turn" => {
+                flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                let to_emit = std::mem::take(saved_this_turn);
+                if !to_emit.is_empty() {
+                    eprintln!("[acp] end_turn: session={} emitting {} saved messages", workspace_id, to_emit.len());
+                    let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                        "sessionId": workspace_id,
+                        "messages": to_emit,
+                    }));
+                }
             }
             _ => {
                 if update_type == "unknown" {
                     eprintln!("[acp] unknown update_type — raw params: {}", serde_json::to_string(params).unwrap_or_default().chars().take(500).collect::<String>());
                 }
-                *streaming_type = None;
             }
         }
 
@@ -438,26 +541,51 @@ impl AcpConnection {
     /// Send a session/prompt request and persist the user message to SQLite.
     /// Centralizes user-message persistence so it happens exactly once per send,
     /// regardless of how many times the frontend invokes the command.
+    pub fn set_suppress_updates(&self, suppress: bool) {
+        self.suppress_updates.store(suppress, Ordering::Release);
+        eprintln!("[acp] suppress_updates={} workspace={}", suppress, self.workspace_id);
+    }
+
     pub async fn send_prompt(
         &self,
         acp_session_id: String,
         text: String,
         timeout: std::time::Duration,
     ) -> Result<serde_json::Value, String> {
-        // Persist user message to DB before sending
+        let was_suppressed = self.suppress_updates.swap(false, Ordering::AcqRel);
+        eprintln!("[acp] send_prompt: workspace={} was_suppressed={} text_len={}", self.workspace_id, was_suppressed, text.len());
         if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
-            if let Ok(conn) = db.0.lock() {
-                let _ = crate::messages::save_message(
-                    &conn,
-                    &self.workspace_id,
-                    "user",
-                    &text,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+            match db.0.lock() {
+                Ok(conn) => {
+                    if crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, &text) {
+                        eprintln!("[acp] send_prompt: skipping duplicate user message");
+                    } else {
+                        match crate::messages::save_message(
+                            &conn,
+                            &self.workspace_id,
+                            "user",
+                            &text,
+                            None,
+                            None,
+                            None,
+                            None,
+                        ) {
+                            Ok(record) => {
+                                eprintln!("[acp] send_prompt: saved user message id={}", record.id);
+                                let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
+                                    "sessionId": &self.workspace_id,
+                                    "id": record.id,
+                                    "content": &text,
+                                }));
+                            }
+                            Err(e) => eprintln!("[acp] send_prompt: save_message FAILED: {}", e),
+                        }
+                    }
+                },
+                Err(e) => eprintln!("[acp] send_prompt: db lock FAILED: {}", e),
             }
+        } else {
+            eprintln!("[acp] send_prompt: CommentsDb state NOT FOUND");
         }
 
         let params = crate::acp::types::PromptParams {
