@@ -44,7 +44,7 @@ export function MarkdownViewer({
   const { workspaces, expandedWorkspaceId, minimizeWorkspace } = useApp();
   const workspace = workspaces.find((w) => w.id === expandedWorkspaceId);
 
-  const resolvedPath = filePathProp ?? workspace?.path ?? null;
+  const resolvedPath = filePathProp ?? (embedded ? null : workspace?.path ?? null);
 
   const [html, setHtml] = useState("");
   const [headings, setHeadings] = useState<Heading[]>([]);

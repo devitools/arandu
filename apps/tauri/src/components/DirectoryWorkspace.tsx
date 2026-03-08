@@ -85,14 +85,6 @@ export function DirectoryWorkspace() {
       try {
         const record = await local.createSession(name, prompt);
         mountedSessionRef.current = record;
-        // Spawn a dedicated ACP instance for this new session
-        invoke("acp_session_connect", {
-          sessionId: record.id,
-          workspacePath: workspace.path,
-          binaryPath: null,
-          ghToken: null,
-          acpSessionId: null,
-        }).catch((e: unknown) => console.error("[DirectoryWorkspace] acp_session_connect error:", e));
         setBrowsing(false);
         setShowNewForm(false);
       } catch (e) {
