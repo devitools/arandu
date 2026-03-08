@@ -1,4 +1,4 @@
-import type { AcpMessage, AcpSessionUpdate } from "@/types/acp";
+import type { AcpMessage, AcpSessionUpdate, AcpSessionMode, AcpSessionConfigOption } from "@/types/acp";
 import type { AcpConnectionStatus } from "@/hooks/useAcpConnection";
 
 interface ConnectionEntry {
@@ -10,7 +10,9 @@ export interface SessionEntry {
   messages: AcpMessage[];
   activeAcpSessionId: string | null;
   currentMode: string | null;
-  availableModes: string[];
+  availableModes: AcpSessionMode[];
+  availableConfigOptions: AcpSessionConfigOption[];
+  selectedConfigOptions: Record<string, string>;
   agentPlanFilePath: string | null;
   isStreaming: boolean;
 }
@@ -45,6 +47,7 @@ export function clearWorkspaceCaches(workspaceId: string) {
   subscribers.delete(workspaceId);
   ui.delete(workspaceId);
   clearStreamingTimer(workspaceId);
+  clearFormatTimer(workspaceId);
 }
 
 let msgCounter = 0;
@@ -53,7 +56,8 @@ function nextMsgId() {
 }
 
 function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): SessionEntry {
-  const { updateType, payload } = update;
+  const { updateType, payload, workspaceId } = update;
+  console.debug("[session-cache] %s: workspace=%s msgs=%d streaming=%s", updateType, workspaceId, entry.messages.length, entry.isStreaming);
   const p = payload as Record<string, unknown>;
   const msgs = [...entry.messages];
   let { isStreaming, agentPlanFilePath, currentMode } = entry;
@@ -98,7 +102,7 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
         id: nextMsgId(),
         role: "assistant",
         type: "tool",
-        content: (p.title as string) || (p.kind as string) || "Tool call",
+        content: "",
         timestamp: new Date(),
         toolCallId: p.toolCallId as string,
         toolTitle: p.title as string,
@@ -107,7 +111,7 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       const locations = p.locations as Array<{ path: string }> | undefined;
       const rawInput = p.rawInput as Record<string, unknown> | undefined;
       const filePath = locations?.[0]?.path || (rawInput?.path as string) || (rawInput?.file_path as string) || "";
-      if (filePath.endsWith("/plan.md")) agentPlanFilePath = filePath;
+      if (/\/plan[^/]*\.md$/i.test(filePath)) agentPlanFilePath = filePath;
       isStreaming = true;
       break;
     }
@@ -118,23 +122,48 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       if (!summary) break;
       const idx = msgs.findIndex((m) => m.toolCallId === (p.toolCallId as string));
       if (idx !== -1) {
-        msgs[idx] = { ...msgs[idx], content: `${msgs[idx].toolTitle || "Tool"}: ${summary}`, toolStatus: "completed" };
+        msgs[idx] = { ...msgs[idx], content: summary, toolStatus: "completed" };
       }
       break;
     }
     case "current_mode_update":
       currentMode = p.currentModeId as string;
       break;
+    case "session_modes":
+    case "session_info_update": {
+      const modeState = readModeState(p);
+      if (modeState.availableModes) entry.availableModes = modeState.availableModes;
+      if (modeState.currentMode) currentMode = modeState.currentMode;
+      const configState = readConfigState(p);
+      if (configState.availableConfigOptions) entry.availableConfigOptions = configState.availableConfigOptions;
+      if (configState.selectedConfigOptions) entry.selectedConfigOptions = configState.selectedConfigOptions;
+      break;
+    }
+    case "config_option_update":
+    case "config_options_update": {
+      const configState = readConfigState(p);
+      if (configState.availableConfigOptions) entry.availableConfigOptions = configState.availableConfigOptions;
+      if (configState.selectedConfigOptions) entry.selectedConfigOptions = configState.selectedConfigOptions;
+      break;
+    }
   }
 
-  return { ...entry, messages: msgs.length === 0 ? [] : msgs, isStreaming, agentPlanFilePath, currentMode };
+  return { ...entry, messages: msgs.length === 0 ? [] : msgs, isStreaming, agentPlanFilePath, currentMode, availableModes: entry.availableModes, availableConfigOptions: entry.availableConfigOptions, selectedConfigOptions: entry.selectedConfigOptions };
 }
 
 type SessionSubscriber = (entry: SessionEntry) => void;
 const subscribers = new Map<string, Set<SessionSubscriber>>();
 const streamingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const formatTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const STREAMING_TIMEOUT_MS = 60_000;
+
+/**
+ * Idle time (ms) after the last chunk before auto-formatting markdown.
+ * Adjust this value to control how quickly streaming text switches
+ * from plain text to rendered markdown when no new chunks arrive.
+ */
+const FORMAT_IDLE_MS = 5_000;
 
 function resetStreamingTimer(workspaceId: string) {
   const existing = streamingTimers.get(workspaceId);
@@ -156,6 +185,27 @@ function clearStreamingTimer(workspaceId: string) {
   if (existing) {
     clearTimeout(existing);
     streamingTimers.delete(workspaceId);
+  }
+}
+
+function resetFormatTimer(workspaceId: string) {
+  clearFormatTimer(workspaceId);
+  formatTimers.set(workspaceId, setTimeout(() => {
+    formatTimers.delete(workspaceId);
+    const entry = sessions.get(workspaceId);
+    if (entry?.isStreaming) {
+      const updated = { ...entry, isStreaming: false };
+      sessions.set(workspaceId, updated);
+      notifySubscribers(workspaceId, updated);
+    }
+  }, FORMAT_IDLE_MS));
+}
+
+function clearFormatTimer(workspaceId: string) {
+  const existing = formatTimers.get(workspaceId);
+  if (existing) {
+    clearTimeout(existing);
+    formatTimers.delete(workspaceId);
   }
 }
 
@@ -184,8 +234,10 @@ function ensureGlobalListener() {
 
     if (newEntry.isStreaming) {
       resetStreamingTimer(workspaceId);
+      resetFormatTimer(workspaceId);
     } else {
       clearStreamingTimer(workspaceId);
+      clearFormatTimer(workspaceId);
     }
   }).catch((e: unknown) => {
     listenerSetup = false; // allow retry if registration fails
@@ -193,48 +245,106 @@ function ensureGlobalListener() {
   });
 }
 
-export function subscribeSession(workspaceId: string, cb: SessionSubscriber): () => void {
+export function subscribeSession(sessionId: string, cb: SessionSubscriber): () => void {
   ensureGlobalListener();
-  // Ensure a session entry exists so events are not dropped
-  if (!sessions.has(workspaceId)) {
-    sessions.set(workspaceId, {
+  if (!sessions.has(sessionId)) {
+    sessions.set(sessionId, {
       messages: [],
       activeAcpSessionId: null,
       currentMode: null,
       availableModes: [],
+      availableConfigOptions: [],
+      selectedConfigOptions: {},
       agentPlanFilePath: null,
       isStreaming: false,
     });
   }
-  let subs = subscribers.get(workspaceId);
+  let subs = subscribers.get(sessionId);
   if (!subs) {
     subs = new Set();
-    subscribers.set(workspaceId, subs);
+    subscribers.set(sessionId, subs);
   }
   subs.add(cb);
   return () => {
     subs!.delete(cb);
-    if (subs!.size === 0) subscribers.delete(workspaceId);
+    if (subs!.size === 0) subscribers.delete(sessionId);
   };
 }
 
-export function updateSessionEntry(workspaceId: string, partial: Partial<SessionEntry>) {
-  const entry = sessions.get(workspaceId);
+export function updateSessionEntry(sessionId: string, partial: Partial<SessionEntry>) {
+  const entry = sessions.get(sessionId);
   if (!entry) return;
   const newEntry = { ...entry, ...partial };
-  sessions.set(workspaceId, newEntry);
-  notifySubscribers(workspaceId, newEntry);
+  sessions.set(sessionId, newEntry);
+  notifySubscribers(sessionId, newEntry);
 }
 
-export function addUserMessage(workspaceId: string, text: string) {
-  const entry = sessions.get(workspaceId);
+export function resetSessionMessages(sessionId: string) {
+  const entry = sessions.get(sessionId);
+  if (entry && entry.messages.length > 0) {
+    const cleared = { ...entry, messages: [] as AcpMessage[] };
+    sessions.set(sessionId, cleared);
+    notifySubscribers(sessionId, cleared);
+  }
+}
+
+export function addUserMessage(sessionId: string, text: string) {
+  const entry = sessions.get(sessionId);
   if (!entry) return;
   const newEntry = {
     ...entry,
     messages: [...entry.messages, { id: nextMsgId(), role: "user" as const, content: text, timestamp: new Date() }],
     isStreaming: true,
   };
-  sessions.set(workspaceId, newEntry);
-  notifySubscribers(workspaceId, newEntry);
-  resetStreamingTimer(workspaceId);
+  sessions.set(sessionId, newEntry);
+  notifySubscribers(sessionId, newEntry);
+  resetStreamingTimer(sessionId);
+}
+
+export function addSystemNotice(sessionId: string, text: string) {
+  const entry = sessions.get(sessionId);
+  if (!entry || !text.trim()) return;
+  const newEntry = {
+    ...entry,
+    messages: [
+      ...entry.messages,
+      { id: nextMsgId(), role: "assistant" as const, type: "notice" as const, content: text, timestamp: new Date() },
+    ],
+  };
+  sessions.set(sessionId, newEntry);
+  notifySubscribers(sessionId, newEntry);
+}
+
+function normalizeSelectedConfigOptions(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    result[k] = typeof v === "string" ? v : String(v ?? "");
+  }
+  return result;
+}
+
+function readConfigState(p: Record<string, unknown>): { availableConfigOptions?: AcpSessionConfigOption[]; selectedConfigOptions?: Record<string, string> } {
+  const result: { availableConfigOptions?: AcpSessionConfigOption[]; selectedConfigOptions?: Record<string, string> } = {};
+  if (Array.isArray(p.availableConfigOptions)) {
+    result.availableConfigOptions = p.availableConfigOptions as AcpSessionConfigOption[];
+  }
+  if (p.selectedConfigOptions && typeof p.selectedConfigOptions === "object") {
+    result.selectedConfigOptions = normalizeSelectedConfigOptions(p.selectedConfigOptions);
+  }
+  return result;
+}
+
+function readModeState(p: Record<string, unknown>): { availableModes?: AcpSessionMode[]; currentMode?: string } {
+  const result: { availableModes?: AcpSessionMode[]; currentMode?: string } = {};
+  if (Array.isArray(p.availableModes)) {
+    result.availableModes = (p.availableModes as unknown[]).map((m) => {
+      if (typeof m === "string") return { id: m } as AcpSessionMode;
+      return m as AcpSessionMode;
+    });
+  }
+  if (typeof p.currentModeId === "string") {
+    result.currentMode = p.currentModeId;
+  }
+  return result;
 }
