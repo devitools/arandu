@@ -69,6 +69,7 @@
     "formNamePlaceholder": "e.g. Refactor auth module",
     "formPrompt": "Brainstorm",
     "formPromptPlaceholder": "Describe in detail what you want to accomplish...\n\ne.g.:\n• Refactor the authentication flow to use JWT tokens instead of sessions\n• Add input validation to all API endpoints with proper error messages\n• Create a caching layer for database queries using Redis",
+    "formProvider": "Provider",
     "formSubmit": "Start Session",
     "minimize": "Minimize session",
     "endSession": "End session",

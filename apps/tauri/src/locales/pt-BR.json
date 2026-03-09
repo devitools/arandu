@@ -69,6 +69,7 @@
     "formNamePlaceholder": "ex. Refatorar módulo de autenticação",
     "formPrompt": "Brainstorm",
     "formPromptPlaceholder": "Descreva em detalhes o que deseja realizar...\n\nex.:\n• Refatorar o fluxo de autenticação para usar JWT ao invés de sessões\n• Adicionar validação de input em todos os endpoints da API com mensagens de erro\n• Criar uma camada de cache para consultas ao banco usando Redis",
+    "formProvider": "Provedor",
     "formSubmit": "Iniciar Sessão",
     "minimize": "Minimizar sessão",
     "endSession": "Encerrar sessão",

@@ -9,11 +9,22 @@ export type SessionConnectionStatus =
   | "connected"
   | "disconnected";
 
+interface ConnectOptions {
+  workspacePath: string;
+  provider?: string;
+  binary?: string;
+  ghToken?: string;
+  acpSessionId?: string;
+  model?: string;
+  skipPermissions?: boolean;
+  maxBudgetUsd?: string;
+}
+
 interface UseSessionConnectionReturn {
   status: SessionConnectionStatus;
   isConnected: boolean;
   isConnecting: boolean;
-  connect: (workspacePath: string, binary?: string, ghToken?: string, acpSessionId?: string) => Promise<string | null>;
+  connect: (opts: ConnectOptions) => Promise<string | null>;
   disconnect: () => Promise<void>;
 }
 
@@ -113,18 +124,22 @@ export function useSessionConnection(sessionId: string): UseSessionConnectionRet
   }, [sessionId]);
 
   const connect = useCallback(
-    async (workspacePath: string, binary?: string, ghToken?: string, acpSessionId?: string) => {
+    async (opts: ConnectOptions) => {
       setStatus("connecting");
       try {
-        const copilotSessionId = await invoke<string>("acp_session_connect", {
+        const providerSessionId = await invoke<string>("acp_session_connect", {
           sessionId,
-          workspacePath,
-          binaryPath: binary ?? null,
-          ghToken: ghToken ?? null,
-          acpSessionId: acpSessionId ?? null,
+          workspacePath: opts.workspacePath,
+          provider: opts.provider ?? null,
+          binaryPath: opts.binary ?? null,
+          ghToken: opts.ghToken ?? null,
+          model: opts.model ?? null,
+          skipPermissions: opts.skipPermissions ?? null,
+          maxBudgetUsd: opts.maxBudgetUsd ?? null,
+          acpSessionId: opts.acpSessionId ?? null,
         });
         setStatus("connected");
-        return copilotSessionId;
+        return providerSessionId;
       } catch (e) {
         console.error("[useSessionConnection] connect error:", e);
         setStatus("disconnected");

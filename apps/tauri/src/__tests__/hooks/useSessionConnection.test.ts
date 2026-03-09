@@ -63,7 +63,7 @@ describe("useSessionConnection", () => {
 
     let copilotId: string | null = null;
     await act(async () => {
-      copilotId = await result.current.connect("/workspace/path");
+      copilotId = await result.current.connect({ workspacePath: "/workspace/path" });
     });
 
     expect(copilotId).toBe("copilot-abc123");
@@ -86,7 +86,7 @@ describe("useSessionConnection", () => {
 
     let copilotId: string | null = "initial";
     await act(async () => {
-      copilotId = await result.current.connect("/workspace/path");
+      copilotId = await result.current.connect({ workspacePath: "/workspace/path" });
     });
 
     expect(copilotId).toBeNull();
@@ -104,7 +104,7 @@ describe("useSessionConnection", () => {
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
     await act(async () => {
-      await result.current.connect("/workspace/path", undefined, undefined, "existing-acp-id");
+      await result.current.connect({ workspacePath: "/workspace/path", acpSessionId: "existing-acp-id" });
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("acp_session_connect", expect.objectContaining({
@@ -170,7 +170,7 @@ describe("useSessionConnection", () => {
 
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    act(() => { void result.current.connect("/workspace"); });
+    act(() => { void result.current.connect({ workspacePath: "/workspace" }); });
 
     expect(result.current.isConnecting).toBe(true);
     expect(result.current.status).toBe("connecting");
