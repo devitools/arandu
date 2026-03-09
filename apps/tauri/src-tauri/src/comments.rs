@@ -79,6 +79,12 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<Connection, String> {
         ).map_err(|e| format!("Failed to add acp_preferences_json column: {}", e))?;
     }
 
+    if has_table(&conn, "sessions") && !has_column(&conn, "sessions", "provider") {
+        conn.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'copilot';"
+        ).map_err(|e| format!("Failed to add provider column: {}", e))?;
+    }
+
     if !has_table(&conn, "workspace_acp_defaults") {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS workspace_acp_defaults (
@@ -108,6 +114,8 @@ fn create_schema_v2(conn: &Connection) -> Result<(), String> {
             id              TEXT    PRIMARY KEY,
             workspace_id    TEXT    NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             acp_session_id  TEXT,
+            provider        TEXT    NOT NULL DEFAULT 'copilot'
+                                    CHECK (provider IN ('copilot', 'claude')),
             name            TEXT    NOT NULL,
             initial_prompt  TEXT    NOT NULL DEFAULT '',
             plan_file_path  TEXT,
