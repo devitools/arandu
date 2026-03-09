@@ -63,7 +63,7 @@ describe("useSessionConnection", () => {
 
     let copilotId: string | null = null;
     await act(async () => {
-      copilotId = await result.current.connect("/workspace/path");
+      copilotId = await result.current.connect({ workspacePath: "/workspace/path" });
     });
 
     expect(copilotId).toBe("copilot-abc123");
@@ -75,7 +75,7 @@ describe("useSessionConnection", () => {
     expect(result.current.isConnected).toBe(true);
   });
 
-  it("connect() failure sets status to disconnected and returns null", async () => {
+  it("connect() failure sets status to disconnected and throws", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "acp_session_status") return Promise.resolve("disconnected");
       if (cmd === "acp_session_connect") return Promise.reject("spawn failed");
@@ -84,12 +84,16 @@ describe("useSessionConnection", () => {
 
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    let copilotId: string | null = "initial";
+    let error: unknown = null;
     await act(async () => {
-      copilotId = await result.current.connect("/workspace/path");
+      try {
+        await result.current.connect({ workspacePath: "/workspace/path" });
+      } catch (e) {
+        error = e;
+      }
     });
 
-    expect(copilotId).toBeNull();
+    expect(error).toBe("spawn failed");
     expect(result.current.status).toBe("disconnected");
     expect(result.current.isConnected).toBe(false);
   });
@@ -104,7 +108,7 @@ describe("useSessionConnection", () => {
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
     await act(async () => {
-      await result.current.connect("/workspace/path", undefined, undefined, "existing-acp-id");
+      await result.current.connect({ workspacePath: "/workspace/path", acpSessionId: "existing-acp-id" });
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("acp_session_connect", expect.objectContaining({
@@ -170,7 +174,7 @@ describe("useSessionConnection", () => {
 
     const { result } = renderHook(() => useSessionConnection("sess-1"));
 
-    act(() => { void result.current.connect("/workspace"); });
+    act(() => { void result.current.connect({ workspacePath: "/workspace" }); });
 
     expect(result.current.isConnecting).toBe(true);
     expect(result.current.status).toBe("connecting");

@@ -53,10 +53,13 @@ export interface CardRect {
 
 export type PlanPhase = "idle" | "planning" | "reviewing" | "executing" | "done";
 
+export type AcpProvider = "copilot" | "claude";
+
 export interface SessionRecord {
   id: string;
   workspace_id: string;
   acp_session_id: string | null;
+  provider: AcpProvider;
   name: string;
   initial_prompt: string;
   plan_file_path: string | null;

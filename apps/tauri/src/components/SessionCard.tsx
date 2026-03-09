@@ -95,6 +95,9 @@ export function SessionCard({ session, onSelect, onDelete, connectionStatus }: S
             <span className="text-xs text-muted-foreground">
               {t(PHASE_KEYS[session.phase])}
             </span>
+            <span className="text-[10px] text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded uppercase tracking-wider">
+              {session.provider === "claude" ? t("settings.providerClaude") : t("settings.providerCopilot")}
+            </span>
           </div>
           {connectionStatus && connectionStatus !== "idle" && (
             <span

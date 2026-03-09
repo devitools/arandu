@@ -6,6 +6,7 @@ pub struct SessionRecord {
     pub id: String,
     pub workspace_id: String,
     pub acp_session_id: Option<String>,
+    pub provider: String,
     pub name: String,
     pub initial_prompt: String,
     pub plan_file_path: Option<String>,
@@ -20,17 +21,18 @@ fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<SessionRecord> {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
         acp_session_id: row.get(2)?,
-        name: row.get(3)?,
-        initial_prompt: row.get(4)?,
-        plan_file_path: row.get(5)?,
-        phase: row.get(6)?,
-        acp_preferences_json: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        provider: row.get(3)?,
+        name: row.get(4)?,
+        initial_prompt: row.get(5)?,
+        plan_file_path: row.get(6)?,
+        phase: row.get(7)?,
+        acp_preferences_json: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 
-const SESSION_COLUMNS: &str = "id, workspace_id, acp_session_id, name, initial_prompt, plan_file_path, phase, acp_preferences_json, created_at, updated_at";
+const SESSION_COLUMNS: &str = "id, workspace_id, acp_session_id, provider, name, initial_prompt, plan_file_path, phase, acp_preferences_json, created_at, updated_at";
 
 pub fn list_sessions(conn: &Connection, workspace_id: &str) -> Result<Vec<SessionRecord>, String> {
     let sql = format!(
@@ -60,14 +62,19 @@ pub fn create_session(
     workspace_id: &str,
     name: &str,
     initial_prompt: &str,
+    provider: &str,
 ) -> Result<SessionRecord, String> {
+    let valid_providers = ["copilot", "claude"];
+    if !valid_providers.contains(&provider) {
+        return Err(format!("Invalid provider: {}. Must be one of: {:?}", provider, valid_providers));
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let now = crate::comments::now();
 
     conn.execute(
-        "INSERT INTO sessions (id, workspace_id, name, initial_prompt, phase, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'idle', ?5, ?5)",
-        params![id, workspace_id, name, initial_prompt, now],
+        "INSERT INTO sessions (id, workspace_id, name, initial_prompt, provider, phase, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'idle', ?6, ?6)",
+        params![id, workspace_id, name, initial_prompt, provider, now],
     )
     .map_err(|e| format!("Insert error: {}", e))?;
 
@@ -269,10 +276,12 @@ pub fn session_create(
     workspace_id: String,
     name: String,
     initial_prompt: String,
+    provider: Option<String>,
     db: tauri::State<CommentsDb>,
 ) -> Result<SessionRecord, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    create_session(&conn, &workspace_id, &name, &initial_prompt)
+    let p = provider.as_deref().unwrap_or("copilot");
+    create_session(&conn, &workspace_id, &name, &initial_prompt, p)
 }
 
 #[tauri::command]

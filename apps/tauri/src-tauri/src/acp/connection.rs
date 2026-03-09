@@ -670,7 +670,459 @@ impl AcpConnection {
         }
     }
 
+
     /// Emits a connection-status event to the frontend.
+    pub fn emit_status(&self, status: &str, attempt: Option<u32>) {
+        let event = ConnectionStatusEvent {
+            workspace_id: self.workspace_id.clone(),
+            status: status.to_string(),
+            attempt,
+        };
+        let _ = self.app_handle.emit("acp:connection-status", &event);
+    }
+
+    pub fn emit_log(&self, level: &str, event: &str, message: &str) {
+        emit_log_raw(&self.app_handle, &self.workspace_id, level, event, message);
+    }
+}
+
+
+// ── ClaudeConnection ─────────────────────────────────────────────────────────
+
+type PendingResult = Arc<Mutex<Option<oneshot::Sender<Result<(), String>>>>>;
+
+pub struct ClaudeConnection {
+    child: ChildRef,
+    writer_tx: mpsc::Sender<String>,
+    session_id: Arc<Mutex<Option<String>>>,
+    pending_result: PendingResult,
+    reader_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    writer_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    heartbeat_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    app_handle: AppHandle,
+    workspace_id: String,
+}
+
+impl ClaudeConnection {
+    pub async fn spawn(
+        binary: &str,
+        cwd: &str,
+        model: Option<&str>,
+        skip_permissions: bool,
+        max_budget_usd: Option<&str>,
+        resume_session_id: Option<&str>,
+        workspace_id: String,
+        app_handle: AppHandle,
+    ) -> Result<Self, String> {
+        let mut args: Vec<String> = vec![
+            "--print".into(),
+            "--output-format".into(),
+            "stream-json".into(),
+            "--input-format".into(),
+            "stream-json".into(),
+        ];
+        if let Some(m) = model.filter(|s| !s.trim().is_empty()) {
+            args.push("--model".into());
+            args.push(m.to_string());
+        }
+        if skip_permissions {
+            args.push("--dangerously-skip-permissions".into());
+        }
+        if let Some(budget) = max_budget_usd.filter(|s| !s.trim().is_empty()) {
+            args.push("--max-budget-usd".into());
+            args.push(budget.to_string());
+        }
+        if let Some(sid) = resume_session_id.filter(|s| !s.trim().is_empty()) {
+            args.push("--resume".into());
+            args.push(sid.to_string());
+        }
+
+        let mut cmd = Command::new(binary);
+        cmd.args(&args)
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .kill_on_drop(true);
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn {}: {}", binary, e))?;
+
+        let stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
+        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+
+        let (writer_tx, writer_rx) = mpsc::channel::<String>(64);
+        let session_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let pending_result: PendingResult = Arc::new(Mutex::new(None));
+
+        let writer_handle = tokio::spawn(Self::writer_task(stdin, writer_rx));
+        let reader_handle = tokio::spawn(Self::reader_task(
+            stdout,
+            session_id.clone(),
+            pending_result.clone(),
+            writer_tx.clone(),
+            workspace_id.clone(),
+            app_handle.clone(),
+        ));
+
+        let child_arc: ChildRef = Arc::new(Mutex::new(Some(child)));
+        let heartbeat_handle = tokio::spawn(Self::heartbeat_task(
+            child_arc.clone(),
+            workspace_id.clone(),
+            app_handle.clone(),
+        ));
+
+        Ok(Self {
+            child: child_arc,
+            writer_tx,
+            session_id,
+            pending_result,
+            reader_handle: Mutex::new(Some(reader_handle)),
+            writer_handle: Mutex::new(Some(writer_handle)),
+            heartbeat_handle: Mutex::new(Some(heartbeat_handle)),
+            app_handle,
+            workspace_id,
+        })
+    }
+
+    async fn writer_task(mut stdin: tokio::process::ChildStdin, mut rx: mpsc::Receiver<String>) {
+        while let Some(line) = rx.recv().await {
+            if stdin.write_all(line.as_bytes()).await.is_err() {
+                break;
+            }
+            if stdin.flush().await.is_err() {
+                break;
+            }
+        }
+    }
+
+    async fn reader_task(
+        stdout: tokio::process::ChildStdout,
+        session_id: Arc<Mutex<Option<String>>>,
+        pending_result: PendingResult,
+        _writer_tx: mpsc::Sender<String>,
+        workspace_id: String,
+        app_handle: AppHandle,
+    ) {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+
+        let mut saved_this_turn: Vec<MessageRecord> = Vec::new();
+        let mut streaming_buffer: Option<String> = None;
+        let mut streaming_type: Option<String> = None;
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            let line = line.trim().to_string();
+            if line.is_empty() {
+                continue;
+            }
+
+            let event: ClaudeEvent = match serde_json::from_str(&line) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("[claude] Failed to parse event: {} — {}", e, &line[..line.len().min(200)]);
+                    continue;
+                }
+            };
+
+            match event {
+                ClaudeEvent::System(sys) => {
+                    if sys.subtype.as_deref() == Some("init") {
+                        if let Some(sid) = sys.session_id {
+                            *session_id.lock().await = Some(sid.clone());
+                            let ev = SessionUpdateEvent {
+                                workspace_id: workspace_id.clone(),
+                                session_id: sid,
+                                update_type: "session_started".to_string(),
+                                payload: serde_json::Value::Null,
+                            };
+                            let _ = app_handle.emit("acp:session-update", &ev);
+                        }
+                    }
+                }
+
+                ClaudeEvent::Assistant(asst) => {
+                    let sid = session_id.lock().await.clone().unwrap_or_default();
+                    for block in asst.message.content {
+                        match block {
+                            ClaudeContentBlock::Text { text } => {
+                                streaming_type.get_or_insert_with(|| "assistant".to_string());
+                                streaming_buffer
+                                    .get_or_insert_with(String::new)
+                                    .push_str(&text);
+
+                                let ev = SessionUpdateEvent {
+                                    workspace_id: workspace_id.clone(),
+                                    session_id: sid.clone(),
+                                    update_type: "agent_message_chunk".to_string(),
+                                    payload: serde_json::json!({
+                                        "content": { "type": "text", "text": text }
+                                    }),
+                                };
+                                let _ = app_handle.emit("acp:session-update", &ev);
+                            }
+                            ClaudeContentBlock::ToolUse { id, name, input } => {
+                                flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+
+                                let input_str = serde_json::to_string(&input).unwrap_or_default();
+                                save_to_db(
+                                    &mut saved_this_turn, &workspace_id, &app_handle,
+                                    "assistant", &input_str,
+                                    Some("tool"), Some(&id), Some(&name), Some("pending"),
+                                );
+
+                                let ev = SessionUpdateEvent {
+                                    workspace_id: workspace_id.clone(),
+                                    session_id: sid.clone(),
+                                    update_type: "tool_call".to_string(),
+                                    payload: serde_json::json!({
+                                        "toolCallId": id,
+                                        "title": name,
+                                        "kind": name,
+                                        "rawInput": input,
+                                        "status": "pending"
+                                    }),
+                                };
+                                let _ = app_handle.emit("acp:session-update", &ev);
+                            }
+                            ClaudeContentBlock::Unknown => {}
+                        }
+                    }
+                }
+
+                ClaudeEvent::User(user) => {
+                    let sid = session_id.lock().await.clone().unwrap_or_default();
+                    for block in user.message.content {
+                        if let Some(tool_use_id) = block.tool_use_id {
+                            let content_str = block
+                                .content
+                                .as_ref()
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+
+                            if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+                                if let Ok(conn) = db.0.lock() {
+                                    if let Ok(updated) = crate::messages::update_message_by_tool_call_id(
+                                        &conn, &workspace_id, &tool_use_id,
+                                        Some(&content_str), "completed",
+                                    ) {
+                                        if let Some(record) = saved_this_turn.iter_mut().rev()
+                                            .find(|r| r.tool_call_id.as_deref() == Some(&tool_use_id))
+                                        {
+                                            *record = updated;
+                                        }
+                                    }
+                                }
+                            }
+
+                            let ev = SessionUpdateEvent {
+                                workspace_id: workspace_id.clone(),
+                                session_id: sid.clone(),
+                                update_type: "tool_call_update".to_string(),
+                                payload: serde_json::json!({
+                                    "toolCallId": tool_use_id,
+                                    "status": "completed",
+                                    "rawOutput": { "content": content_str }
+                                }),
+                            };
+                            let _ = app_handle.emit("acp:session-update", &ev);
+                        }
+                    }
+                }
+
+                ClaudeEvent::Result(result) => {
+                    let sid = session_id.lock().await.clone().unwrap_or_default();
+                    let is_error = result.is_error.unwrap_or(false);
+
+                    flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+                    let to_emit = std::mem::take(&mut saved_this_turn);
+                    if !to_emit.is_empty() {
+                        let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                            "sessionId": &workspace_id,
+                            "messages": to_emit,
+                        }));
+                    }
+
+                    let ev = SessionUpdateEvent {
+                        workspace_id: workspace_id.clone(),
+                        session_id: sid,
+                        update_type: "end_turn".to_string(),
+                        payload: serde_json::json!({
+                            "isError": is_error,
+                            "totalCostUsd": result.total_cost_usd,
+                        }),
+                    };
+                    let _ = app_handle.emit("acp:session-update", &ev);
+
+                    // Resolve the pending send_prompt future
+                    if let Some(tx) = pending_result.lock().await.take() {
+                        let r = if is_error {
+                            Err(result.result.unwrap_or_else(|| "Claude returned an error".to_string()))
+                        } else {
+                            Ok(())
+                        };
+                        let _ = tx.send(r);
+                    }
+                }
+
+                ClaudeEvent::Unknown => {}
+            }
+        }
+
+        // Flush any remaining buffer on reader exit
+        flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+        if !saved_this_turn.is_empty() {
+            let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                "sessionId": &workspace_id,
+                "messages": saved_this_turn,
+            }));
+        }
+
+        eprintln!("[claude] Reader task ended for workspace {}", workspace_id);
+        emit_log_raw(&app_handle, &workspace_id, "warn", "reader_exit", "Claude reader task ended — stdout closed");
+        let event = ConnectionStatusEvent {
+            workspace_id: workspace_id.clone(),
+            status: "disconnected".to_string(),
+            attempt: None,
+        };
+        let _ = app_handle.emit("acp:connection-status", &event);
+
+        // Unblock any waiting send_prompt
+        if let Some(tx) = pending_result.lock().await.take() {
+            let _ = tx.send(Err("Connection closed".to_string()));
+        }
+    }
+
+    async fn heartbeat_task(child: ChildRef, workspace_id: String, app_handle: AppHandle) {
+        let interval = std::time::Duration::from_secs(15);
+        loop {
+            tokio::time::sleep(interval).await;
+            let mut guard = child.lock().await;
+            if let Some(ref mut c) = *guard {
+                match c.try_wait() {
+                    Ok(Some(status)) => {
+                        eprintln!("[claude] Heartbeat: process exited ({:?}) for workspace {}", status, workspace_id);
+                        *guard = None;
+                        drop(guard);
+                        emit_log_raw(&app_handle, &workspace_id, "error", "process_exit", &format!("Claude process exited: {:?}", status));
+                        let event = ConnectionStatusEvent {
+                            workspace_id,
+                            status: "disconnected".to_string(),
+                            attempt: None,
+                        };
+                        let _ = app_handle.emit("acp:connection-status", &event);
+                        return;
+                    }
+                    Ok(None) => {
+                        // Still running — emit healthy heartbeat
+                        let event = HeartbeatEvent {
+                            workspace_id: workspace_id.clone(),
+                            status: "healthy".to_string(),
+                            latency_ms: None,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let _ = app_handle.emit("acp:heartbeat", &event);
+                    }
+                    Err(e) => {
+                        eprintln!("[claude] Heartbeat try_wait error for workspace {}: {}", workspace_id, e);
+                    }
+                }
+            } else {
+                return;
+            }
+        }
+    }
+
+    /// Write a prompt to Claude's stdin (NDJSON format).
+    pub async fn send_prompt(
+        &self,
+        text: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(), String> {
+        if !text.starts_with('/') {
+            if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
+                if let Ok(conn) = db.0.lock() {
+                    if !crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, text) {
+                        match crate::messages::save_message(
+                            &conn, &self.workspace_id, "user", text,
+                            None, None, None, None,
+                        ) {
+                            Ok(record) => {
+                                let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
+                                    "sessionId": &self.workspace_id,
+                                    "id": record.id,
+                                    "content": text,
+                                }));
+                            }
+                            Err(e) => eprintln!("[claude] send_prompt: save_message error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
+
+        let msg = serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": text }
+        });
+        let line = serde_json::to_string(&msg).map_err(|e| e.to_string())? + "\n";
+
+        let (tx, rx) = oneshot::channel();
+        *self.pending_result.lock().await = Some(tx);
+
+        self.writer_tx
+            .send(line)
+            .await
+            .map_err(|_| "Writer channel closed".to_string())?;
+
+        tokio::time::timeout(timeout, rx)
+            .await
+            .map_err(|_| format!("Timeout waiting for Claude response after {}s", timeout.as_secs()))?
+            .map_err(|_| "Response channel dropped".to_string())?
+    }
+
+    /// Returns the session ID captured from the system/init event.
+    pub async fn get_session_id(&self) -> Option<String> {
+        self.session_id.lock().await.clone()
+    }
+
+    pub async fn shutdown(&self) {
+        let mut child_guard = self.child.lock().await;
+        if let Some(mut child) = child_guard.take() {
+            let _ = child.kill().await;
+        }
+        drop(child_guard);
+
+        // Unblock any waiting send_prompt
+        if let Some(tx) = self.pending_result.lock().await.take() {
+            let _ = tx.send(Err("Shutdown".to_string()));
+        }
+
+        let mut heartbeat = self.heartbeat_handle.lock().await;
+        if let Some(handle) = heartbeat.take() {
+            handle.abort();
+        }
+        let mut reader = self.reader_handle.lock().await;
+        if let Some(handle) = reader.take() {
+            handle.abort();
+        }
+        let mut writer = self.writer_handle.lock().await;
+        if let Some(handle) = writer.take() {
+            handle.abort();
+        }
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        let mut guard = self.child.lock().await;
+        if let Some(ref mut c) = *guard {
+            matches!(c.try_wait(), Ok(None))
+        } else {
+            false
+        }
+    }
+
     pub fn emit_status(&self, status: &str, attempt: Option<u32>) {
         let event = ConnectionStatusEvent {
             workspace_id: self.workspace_id.clone(),

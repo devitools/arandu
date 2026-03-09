@@ -211,10 +211,98 @@ pub struct ConnectionLogEntry {
     pub workspace_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Provider {
+    Copilot,
+    Claude,
+}
+
+impl Default for Provider {
+    fn default() -> Self {
+        Provider::Copilot
+    }
+}
+
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // stored for future reconnect support
 pub struct ConnectionConfig {
+    pub provider: Provider,
     pub binary: String,
     pub cwd: String,
+    // Copilot-specific
     pub gh_token: Option<String>,
+    // Claude-specific
+    pub model: Option<String>,
+    pub skip_permissions: bool,
+    pub max_budget_usd: Option<String>,
+}
+
+// ── Claude NDJSON event types ────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClaudeEvent {
+    System(ClaudeSystemEvent),
+    Assistant(ClaudeAssistantEvent),
+    User(ClaudeUserEvent),
+    Result(ClaudeResultEvent),
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaudeSystemEvent {
+    pub subtype: Option<String>,
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaudeAssistantEvent {
+    pub message: ClaudeMessage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaudeMessage {
+    #[serde(default)]
+    pub content: Vec<ClaudeContentBlock>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClaudeContentBlock {
+    Text { text: String },
+    ToolUse { id: String, name: String, input: serde_json::Value },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaudeUserEvent {
+    pub message: ClaudeUserMessage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaudeUserMessage {
+    #[serde(default)]
+    pub content: Vec<ClaudeToolResultBlock>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct ClaudeToolResultBlock {
+    pub tool_use_id: Option<String>,
+    pub content: Option<serde_json::Value>,
+    pub is_error: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct ClaudeResultEvent {
+    pub subtype: Option<String>,
+    pub is_error: Option<bool>,
+    pub result: Option<String>,
+    pub session_id: Option<String>,
+    pub total_cost_usd: Option<f64>,
 }

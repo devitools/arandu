@@ -232,14 +232,24 @@ export function ActiveSessionView({
   const doInit = useCallback(async () => {
     try {
       const isNewSession = !session.acp_session_id;
-      // acp_session_connect handles both new and resume cases
-      const acpId = await sessionConn.connect(
+      const provider = session.provider ?? "copilot";
+      const opts: Parameters<typeof sessionConn.connect>[0] = {
         workspacePath,
-        undefined,
-        undefined,
-        session.acp_session_id || undefined
-      );
-      if (!acpId) throw new Error("Failed to connect to ACP");
+        provider,
+        acpSessionId: session.acp_session_id || undefined,
+      };
+      if (provider === "copilot") {
+        const binary = localStorage.getItem("arandu-copilot-path") || undefined;
+        const ghToken = localStorage.getItem("arandu-gh-token") || undefined;
+        opts.binary = binary;
+        opts.ghToken = ghToken;
+      } else if (provider === "claude") {
+        opts.binary = localStorage.getItem("arandu-claude-path") || undefined;
+        opts.model = localStorage.getItem("arandu-claude-model") || undefined;
+        opts.skipPermissions = localStorage.getItem("arandu-claude-skip-permissions") === "true";
+        opts.maxBudgetUsd = localStorage.getItem("arandu-claude-max-budget") || undefined;
+      }
+      const acpId = await sessionConn.connect(opts);
 
       setActiveAcpSessionId(acpId);
       updateSessionEntry(session.id, { activeAcpSessionId: acpId });
@@ -283,7 +293,7 @@ export function ActiveSessionView({
       console.error("[ActiveSessionView] init error:", e);
       setErrors((prev) => [...prev, String(e)]);
     }
-  }, [sessionConn, workspacePath, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, plan.startPlanning]);
+  }, [sessionConn, workspacePath, session.acp_session_id, session.id, session.provider, session.phase, session.initial_prompt, session.name, plan.startPlanning]);
 
   // Auto-init: only for new sessions (no acp_session_id yet).
   // Existing sessions require manual reconnection.
@@ -387,6 +397,9 @@ export function ActiveSessionView({
       <div className="h-10 border-b border-border px-3 flex items-center justify-between shrink-0 bg-card">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-semibold truncate mx-2">{session.name}</span>
+          <span className="text-[10px] font-medium text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider">
+            {session.provider === "claude" ? t("settings.providerClaude") : t("settings.providerCopilot")}
+          </span>
           <button
             className="text-xs text-muted-foreground/50 hover:text-muted-foreground font-mono flex-shrink-0 transition-colors"
             title={session.acp_session_id ?? session.id}

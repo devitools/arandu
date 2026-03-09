@@ -258,6 +258,9 @@ pub struct DiagnosticsResult {
     acp_error: Option<String>,
     acp_command: Option<String>,
     acp_stderr: Option<String>,
+    // Claude-specific fields
+    auth_status: Option<String>,
+    auth_method: Option<String>,
 }
 
 async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Option<u64>, Option<String>, String, Option<String>) {
@@ -362,15 +365,114 @@ async fn test_acp_connection(binary: &str, gh_token: Option<&str>) -> (bool, Opt
     }
 }
 
+async fn test_claude_connection(binary: &str) -> (bool, Option<u64>, Option<String>, String, Option<String>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let timeout = std::time::Duration::from_secs(15);
+    let start = std::time::Instant::now();
+    let command_str = format!("{} --print --output-format stream-json --input-format stream-json --dangerously-skip-permissions", binary);
+
+    let mut cmd = tokio::process::Command::new(binary);
+    cmd.args(["--print", "--output-format", "stream-json", "--input-format", "stream-json", "--dangerously-skip-permissions"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return (false, None, Some(format!("spawn failed: {}", e)), command_str, None),
+    };
+
+    let mut stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => return (false, None, Some("failed to capture stdin".to_string()), command_str, None),
+    };
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => return (false, None, Some("failed to capture stdout".to_string()), command_str, None),
+    };
+    let stderr = child.stderr.take();
+
+    // Collect stderr in background
+    let stderr_task = tokio::spawn(async move {
+        if let Some(s) = stderr {
+            let mut reader = BufReader::new(s);
+            let mut buf = String::new();
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                loop {
+                    let mut line = String::new();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => buf.push_str(&line),
+                    }
+                }
+            }).await;
+            if buf.is_empty() { None } else { Some(buf.trim().to_string()) }
+        } else {
+            None
+        }
+    });
+
+    let read_future = async {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let line = line.trim().to_string();
+            if line.is_empty() { continue; }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if v.get("type").and_then(|t| t.as_str()) == Some("system")
+                    && v.get("subtype").and_then(|s| s.as_str()) == Some("init")
+                {
+                    return Ok(());
+                }
+            }
+        }
+        Err("connection closed without system/init event".to_string())
+    };
+
+    // Send a minimal prompt to trigger the init event
+    let _ = stdin.write_all(b"{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"ping\"}}\n").await;
+    let _ = stdin.flush().await;
+
+    match tokio::time::timeout(timeout, read_future).await {
+        Ok(Ok(())) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (true, Some(start.elapsed().as_millis() as u64), None, command_str, stderr_out)
+        }
+        Ok(Err(e)) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (false, Some(start.elapsed().as_millis() as u64), Some(e), command_str, stderr_out)
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let stderr_out = stderr_task.await.ok().flatten();
+            (false, Some(start.elapsed().as_millis() as u64), Some("timeout after 15s — binary may require authentication".to_string()), command_str, stderr_out)
+        }
+    }
+}
+
 #[tauri::command]
-async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) -> DiagnosticsResult {
+async fn run_diagnostics(
+    binary_path: Option<String>,
+    gh_token: Option<String>,
+    provider: Option<String>,
+) -> DiagnosticsResult {
+    let is_claude = provider.as_deref() == Some("claude");
+
     let binary = binary_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| {
-            std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string())
+            if is_claude {
+                std::env::var("CLAUDE_PATH").unwrap_or_else(|_| "claude".to_string())
+            } else {
+                std::env::var("COPILOT_PATH").unwrap_or_else(|_| "copilot".to_string())
+            }
         });
 
     let platform = std::env::consts::OS.to_string();
@@ -406,22 +508,61 @@ async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) 
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let msg = if !stderr.is_empty() { stderr } else { stdout };
-            (
-                true,
-                None,
-                Some(format!("exit {:?}: {}", output.status.code(), msg)),
-            )
+            (true, None, Some(format!("exit {:?}: {}", output.status.code(), msg)))
         }
         Ok(Err(e)) => (false, None, Some(format!("spawn failed: {}", e))),
         Err(_) => (true, None, Some("timeout after 5s".to_string())),
     };
 
-    // Only test ACP if the binary is found
-    let (acp_ok, acp_elapsed_ms, acp_error, acp_command, acp_stderr) = if copilot_binary_found {
-        let token_ref = gh_token.as_deref();
-        test_acp_connection(&binary, token_ref).await
+    // Claude auth status check
+    let (auth_status, auth_method) = if is_claude && copilot_binary_found {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::process::Command::new(&binary)
+                .args(["auth", "status", "--json"])
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await;
+        match result {
+            Ok(Ok(output)) => {
+                let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let logged_in = v.get("loggedIn").and_then(|b| b.as_bool()).unwrap_or(false);
+                    let method = v.get("authMethod").and_then(|s| s.as_str()).map(ToOwned::to_owned);
+                    let email = v.get("email").and_then(|s| s.as_str()).map(ToOwned::to_owned);
+                    let status = if logged_in {
+                        format!("logged_in{}", email.map(|e| format!(" ({})", e)).unwrap_or_default())
+                    } else {
+                        "not_logged_in".to_string()
+                    };
+                    (Some(status), method)
+                } else {
+                    (Some("unknown".to_string()), None)
+                }
+            }
+            Ok(Err(e)) => (Some(format!("error: {}", e)), None),
+            Err(_) => (Some("timeout".to_string()), None),
+        }
     } else {
-        (false, None, Some("binary not found — skipping ACP test".to_string()), format!("{} --acp --stdio", binary), None)
+        (None, None)
+    };
+
+    // ACP/connection test
+    let (acp_ok, acp_elapsed_ms, acp_error, acp_command, acp_stderr) = if copilot_binary_found {
+        if is_claude {
+            test_claude_connection(&binary).await
+        } else {
+            let token_ref = gh_token.as_deref();
+            test_acp_connection(&binary, token_ref).await
+        }
+    } else {
+        let cmd = if is_claude {
+            format!("{} --print --output-format stream-json --input-format stream-json", binary)
+        } else {
+            format!("{} --acp --stdio", binary)
+        };
+        (false, None, Some("binary not found — skipping connection test".to_string()), cmd, None)
     };
 
     DiagnosticsResult {
@@ -439,6 +580,8 @@ async fn run_diagnostics(binary_path: Option<String>, gh_token: Option<String>) 
         acp_error,
         acp_command: Some(acp_command),
         acp_stderr,
+        auth_status,
+        auth_method,
     }
 }
 

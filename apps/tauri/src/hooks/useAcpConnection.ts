@@ -118,13 +118,24 @@ export function useAcpConnection(
     setConnectionStatus("connecting");
     setConnectionError(null);
     try {
+      const provider = localStorage.getItem("arandu-provider") || "copilot";
       const binaryPath = localStorage.getItem("arandu-copilot-path") || undefined;
       const ghToken = localStorage.getItem("arandu-gh-token") || undefined;
+      const claudePath = localStorage.getItem("arandu-claude-path") || undefined;
+      const claudeModel = localStorage.getItem("arandu-claude-model") || undefined;
+      const claudeSkipPermissions = localStorage.getItem("arandu-claude-skip-permissions") === "true";
+      const claudeMaxBudgetRaw = localStorage.getItem("arandu-claude-max-budget");
+      const claudeMaxBudgetUsd = claudeMaxBudgetRaw ? parseFloat(claudeMaxBudgetRaw) : undefined;
       await window.__TAURI__.core.invoke("acp_connect", {
         workspaceId,
         cwd: workspacePath,
+        provider,
         binaryPath,
         ghToken,
+        claudePath,
+        model: claudeModel,
+        skipPermissions: claudeSkipPermissions,
+        maxBudgetUsd: claudeMaxBudgetUsd,
       });
       // Fallback sync in case initial status event was emitted before listener attached
       try {

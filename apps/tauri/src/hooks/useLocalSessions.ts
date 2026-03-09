@@ -5,7 +5,7 @@ import type { SessionRecord } from "@/types";
 interface UseLocalSessionsReturn {
   sessions: SessionRecord[];
   loading: boolean;
-  createSession: (name: string, prompt: string) => Promise<SessionRecord>;
+  createSession: (name: string, prompt: string, provider?: string) => Promise<SessionRecord>;
   updateSessionLocal: (id: string, updates: Partial<SessionRecord>) => void;
   deleteSession: (id: string) => Promise<void>;
   refreshSessions: () => Promise<void>;
@@ -34,11 +34,12 @@ export function useLocalSessions(workspaceId: string): UseLocalSessionsReturn {
   }, [refreshSessions]);
 
   const createSession = useCallback(
-    async (name: string, prompt: string): Promise<SessionRecord> => {
+    async (name: string, prompt: string, provider?: string): Promise<SessionRecord> => {
       const record = await invoke<SessionRecord>("session_create", {
         workspaceId,
         name,
         initialPrompt: prompt,
+        provider: provider ?? localStorage.getItem("arandu-provider") ?? "copilot",
       });
       setSessions((prev) => [record, ...prev]);
       return record;

@@ -79,11 +79,11 @@ export function DirectoryWorkspace() {
     : null;
 
   const handleNewSession = useCallback(
-    async (name: string, prompt: string) => {
+    async (name: string, prompt: string, provider: string) => {
       if (!workspace) return;
       setIsCreating(true);
       try {
-        const record = await local.createSession(name, prompt);
+        const record = await local.createSession(name, prompt, provider);
         mountedSessionRef.current = record;
         setBrowsing(false);
         setShowNewForm(false);
