@@ -808,6 +808,10 @@ impl ClaudeConnection {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
 
+        let mut saved_this_turn: Vec<MessageRecord> = Vec::new();
+        let mut streaming_buffer: Option<String> = None;
+        let mut streaming_type: Option<String> = None;
+
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim().to_string();
             if line.is_empty() {
@@ -843,6 +847,11 @@ impl ClaudeConnection {
                     for block in asst.message.content {
                         match block {
                             ClaudeContentBlock::Text { text } => {
+                                streaming_type.get_or_insert_with(|| "assistant".to_string());
+                                streaming_buffer
+                                    .get_or_insert_with(String::new)
+                                    .push_str(&text);
+
                                 let ev = SessionUpdateEvent {
                                     workspace_id: workspace_id.clone(),
                                     session_id: sid.clone(),
@@ -854,6 +863,15 @@ impl ClaudeConnection {
                                 let _ = app_handle.emit("acp:session-update", &ev);
                             }
                             ClaudeContentBlock::ToolUse { id, name, input } => {
+                                flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+
+                                let input_str = serde_json::to_string(&input).unwrap_or_default();
+                                save_to_db(
+                                    &mut saved_this_turn, &workspace_id, &app_handle,
+                                    "assistant", &input_str,
+                                    Some("tool"), Some(&id), Some(&name), Some("pending"),
+                                );
+
                                 let ev = SessionUpdateEvent {
                                     workspace_id: workspace_id.clone(),
                                     session_id: sid.clone(),
@@ -883,6 +901,22 @@ impl ClaudeConnection {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
+
+                            if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+                                if let Ok(conn) = db.0.lock() {
+                                    if let Ok(updated) = crate::messages::update_message_by_tool_call_id(
+                                        &conn, &workspace_id, &tool_use_id,
+                                        Some(&content_str), "completed",
+                                    ) {
+                                        if let Some(record) = saved_this_turn.iter_mut().rev()
+                                            .find(|r| r.tool_call_id.as_deref() == Some(&tool_use_id))
+                                        {
+                                            *record = updated;
+                                        }
+                                    }
+                                }
+                            }
+
                             let ev = SessionUpdateEvent {
                                 workspace_id: workspace_id.clone(),
                                 session_id: sid.clone(),
@@ -901,6 +935,15 @@ impl ClaudeConnection {
                 ClaudeEvent::Result(result) => {
                     let sid = session_id.lock().await.clone().unwrap_or_default();
                     let is_error = result.is_error.unwrap_or(false);
+
+                    flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+                    let to_emit = std::mem::take(&mut saved_this_turn);
+                    if !to_emit.is_empty() {
+                        let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                            "sessionId": &workspace_id,
+                            "messages": to_emit,
+                        }));
+                    }
 
                     let ev = SessionUpdateEvent {
                         workspace_id: workspace_id.clone(),
@@ -926,6 +969,15 @@ impl ClaudeConnection {
 
                 ClaudeEvent::Unknown => {}
             }
+        }
+
+        // Flush any remaining buffer on reader exit
+        flush_buffer(&mut streaming_buffer, &mut streaming_type, &mut saved_this_turn, &workspace_id, &app_handle);
+        if !saved_this_turn.is_empty() {
+            let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                "sessionId": &workspace_id,
+                "messages": saved_this_turn,
+            }));
         }
 
         eprintln!("[claude] Reader task ended for workspace {}", workspace_id);
@@ -989,6 +1041,28 @@ impl ClaudeConnection {
         text: &str,
         timeout: std::time::Duration,
     ) -> Result<(), String> {
+        if !text.starts_with('/') {
+            if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
+                if let Ok(conn) = db.0.lock() {
+                    if !crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, text) {
+                        match crate::messages::save_message(
+                            &conn, &self.workspace_id, "user", text,
+                            None, None, None, None,
+                        ) {
+                            Ok(record) => {
+                                let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
+                                    "sessionId": &self.workspace_id,
+                                    "id": record.id,
+                                    "content": text,
+                                }));
+                            }
+                            Err(e) => eprintln!("[claude] send_prompt: save_message error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
+
         let msg = serde_json::json!({
             "type": "user",
             "message": { "role": "user", "content": text }
