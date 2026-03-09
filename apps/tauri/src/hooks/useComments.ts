@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 
 const { invoke } = window.__TAURI__.core;
 
-export function useComments() {
+export function useComments(workspaceId?: string) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [fileHash, setFileHash] = useState("");
@@ -27,11 +27,12 @@ export function useComments() {
       };
       await invoke("save_comments", {
         markdownPath: pathRef.current,
+        workspaceId: workspaceId ?? "",
         commentsData: data,
       });
       setSavedHash(hash);
     }).catch(console.error);
-  }, []);
+  }, [workspaceId]);
 
   const loadComments = useCallback(async (path: string) => {
     pathRef.current = path;
@@ -129,6 +130,13 @@ export function useComments() {
     setSelectedBlockIds([]);
   }, []);
 
+  const setBlockSelection = useCallback((blockIds: string[]) => {
+    setSelectedBlockIds(blockIds);
+    if (blockIds.length > 0) {
+      setIsPanelOpen(true);
+    }
+  }, []);
+
   const generateReview = useCallback((): string => {
     const unresolved = comments.filter((c) => !c.resolved);
     if (unresolved.length === 0) {
@@ -177,6 +185,7 @@ export function useComments() {
     deleteComment,
     toggleBlockSelection,
     clearSelection,
+    setBlockSelection,
     generateReview,
     togglePanel,
     commentsByBlock,

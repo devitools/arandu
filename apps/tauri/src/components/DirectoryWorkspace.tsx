@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { PlanPhase } from "@/types";
 import { Loader2, Minimize2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,6 @@ import { NewSessionForm } from "./NewSessionForm";
 import { ActiveSessionView } from "./ActiveSessionView";
 import { SessionCard } from "./SessionCard";
 import { useLocalSessions } from "@/hooks/useLocalSessions";
-import { useAcpConnection } from "@/hooks/useAcpConnection";
 import { uiStore } from "@/lib/session-cache";
 import type { SessionRecord } from "@/types";
 
@@ -25,8 +25,34 @@ export function DirectoryWorkspace() {
   const [browsing, setBrowsing] = useState(true);
   const mountedSessionRef = useRef<SessionRecord | null>(null);
 
-  const local = useLocalSessions(workspace?.path ?? "");
-  const connection = useAcpConnection(workspace?.id ?? "", workspace?.path ?? "");
+  const local = useLocalSessions(workspace?.id ?? "");
+
+  // Track which sessions have active backend ACP instances
+  const [connectedSessions, setConnectedSessions] = useState<Set<string>>(new Set());
+
+  // Hydrate connection status from backend on mount and on workspace change
+  useEffect(() => {
+    invoke<string[]>("acp_session_list_active")
+      .then((ids) => setConnectedSessions(new Set(ids)))
+      .catch(() => {});
+  }, [workspace?.id]);
+
+  // Listen to per-session status events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    window.__TAURI__.event
+      .listen<{ sessionId: string; status: string }>("acp:session-status", (event) => {
+        const { sessionId, status } = event.payload;
+        setConnectedSessions((prev) => {
+          const next = new Set(prev);
+          if (status === "connected") next.add(sessionId);
+          else next.delete(sessionId);
+          return next;
+        });
+      })
+      .then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
 
   useEffect(() => {
     if (cachedMountedSessionId && !mountedSessionRef.current && !local.loading && local.sessions.length > 0) {
@@ -54,11 +80,9 @@ export function DirectoryWorkspace() {
 
   const handleNewSession = useCallback(
     async (name: string, prompt: string) => {
+      if (!workspace) return;
       setIsCreating(true);
       try {
-        if (!connection.isConnected) {
-          await connection.connect();
-        }
         const record = await local.createSession(name, prompt);
         mountedSessionRef.current = record;
         setBrowsing(false);
@@ -69,7 +93,7 @@ export function DirectoryWorkspace() {
         setIsCreating(false);
       }
     },
-    [connection, local]
+    [workspace, local]
   );
 
   const handleResumeSession = useCallback(
@@ -112,15 +136,10 @@ export function DirectoryWorkspace() {
           <span className="text-xs text-muted-foreground truncate" dir="rtl" title={workspace.path}>
             <bdi>{shortenPath(workspace.path)}</bdi>
           </span>
-          {connection.isConnecting && (
+          {false && browsing && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
               <Loader2 className="h-3 w-3 animate-spin" />
               {t("acp.connecting")}
-            </span>
-          )}
-          {connection.connectionError && (
-            <span className="text-xs text-destructive truncate max-w-[200px]" title={connection.connectionError}>
-              {connection.connectionError}
             </span>
           )}
         </div>
@@ -150,11 +169,7 @@ export function DirectoryWorkspace() {
               workspaceId={workspace.id}
               workspacePath={workspace.path}
               session={mountedSession}
-              isConnected={connection.isConnected}
-              isConnecting={connection.isConnecting}
               onPhaseChange={handlePhaseChange}
-              onConnect={connection.connect}
-              onDisconnect={connection.disconnect}
               onMinimize={handleBackToSessions}
             />
           </div>
@@ -190,6 +205,7 @@ export function DirectoryWorkspace() {
                       session={session}
                       onSelect={handleResumeSession}
                       onDelete={handleDeleteSession}
+                      connectionStatus={connectedSessions.has(session.id) ? "connected" : "idle"}
                     />
                   ))}
                 </div>

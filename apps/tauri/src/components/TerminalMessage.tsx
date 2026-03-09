@@ -42,7 +42,7 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
     const rest = lines.slice(1).join("\n");
     return (
       <div className="terminal-msg terminal-msg-user terminal-msg-user--collapsible">
-        <details open>
+        <details>
           <summary className="font-mono text-xs text-muted-foreground">
             {firstLine}
           </summary>
@@ -57,8 +57,8 @@ export function TerminalMessage({ message, isLast, isStreaming }: TerminalMessag
   }
 
   if (message.type === "tool") {
-    const title = shortenPaths(message.toolTitle || message.content);
-    const content = message.toolTitle ? shortenPaths(message.content) : "";
+    const title = shortenPaths(message.toolTitle || "Tool");
+    const content = message.content ? shortenPaths(message.content) : "";
     const contentLines = content ? content.split('\n').filter(l => l.trim()) : [];
     const hasContent = message.toolStatus === "completed" && contentLines.length > 0;
 
@@ -135,8 +135,16 @@ function AgentMessage({ message, isLast, isStreaming }: TerminalMessageProps) {
         <span className="dot dot-agent" />
       </span>
       <div className="terminal-markdown font-mono text-xs text-foreground break-words min-w-0">
-        <Markdown remarkPlugins={remarkPlugins} components={markdownComponents}>{content}</Markdown>
-        {showCursor && <span className="streaming-cursor" />}
+        {showCursor ? (
+          <>
+            <span className="whitespace-pre-wrap">{content}</span>
+            <span className="streaming-cursor" />
+          </>
+        ) : (
+          <Markdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+            {content}
+          </Markdown>
+        )}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, AlignLeft, MessageSquare, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useBlockDragSelect } from "@/hooks/useBlockDragSelect";
 import { useComments } from "@/hooks/useComments";
 import { shortenPath } from "@/lib/format-path";
 import type { Heading } from "@/types";
@@ -44,13 +45,14 @@ export function MarkdownViewer({
   const { workspaces, expandedWorkspaceId, minimizeWorkspace } = useApp();
   const workspace = workspaces.find((w) => w.id === expandedWorkspaceId);
 
-  const resolvedPath = filePathProp ?? workspace?.path ?? null;
+  const resolvedPath = filePathProp ?? (embedded ? null : workspace?.path ?? null);
 
   const [html, setHtml] = useState("");
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [loading, setLoading] = useState(!embedded);
   const [error, setError] = useState<string | null>(null);
   const articleRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
 
@@ -89,8 +91,23 @@ export function MarkdownViewer({
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const review = useComments();
+  const review = useComments(workspace?.id);
   const prevPhaseRef = useRef<PlanPhase | undefined>(phase);
+
+  const dragEnabled = !embedded || !!phase;
+  const onDragSelectionEnd = useCallback(
+    (blockIds: string[]) => {
+      review.setBlockSelection(blockIds);
+      setReviewOpen(true);
+    },
+    [review.setBlockSelection]
+  );
+  const dragSelect = useBlockDragSelect({
+    containerRef: scrollRef,
+    articleRef,
+    enabled: dragEnabled,
+    onSelectionEnd: onDragSelectionEnd,
+  });
 
   const loadContent = useCallback(async (path: string) => {
     try {
@@ -178,20 +195,109 @@ export function MarkdownViewer({
 
     blocks.forEach((block) => {
       block.classList.toggle("selected", review.selectedBlockIds.includes(block.id));
+      block.classList.toggle("drag-preview", dragSelect.previewBlockIds.includes(block.id));
 
-      const hasComment = review.commentsByBlock(block.id).length > 0;
+      const blockComments = review.commentsByBlock(block.id);
+      const commentCount = blockComments.length;
+      const hasComment = commentCount > 0;
       block.classList.toggle("has-comment", hasComment);
       block.classList.toggle("stale", hasComment && review.isStale);
+
+      const existingBadge = block.querySelector(".comment-badge") as HTMLElement | null;
+      if (commentCount > 0) {
+        if (existingBadge) {
+          const countEl = existingBadge.querySelector(".comment-badge-count");
+          if (countEl) countEl.textContent = String(commentCount);
+          existingBadge.classList.remove("comment-badge--selection");
+        } else {
+          const badge = document.createElement("button");
+          badge.className = "comment-badge";
+          badge.dataset.blockId = block.id;
+          badge.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+            `<span class="comment-badge-count">${commentCount}</span>`;
+          block.appendChild(badge);
+        }
+      } else {
+        const isSelected = review.selectedBlockIds.includes(block.id);
+        const selBadge = existingBadge?.classList.contains("comment-badge--selection") ? existingBadge : null;
+        if (isSelected) {
+          if (!selBadge) {
+            if (existingBadge) existingBadge.remove();
+            const badge = document.createElement("button");
+            badge.className = "comment-badge comment-badge--selection";
+            badge.dataset.blockId = block.id;
+            badge.innerHTML =
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+            block.appendChild(badge);
+          }
+        } else if (existingBadge) {
+          existingBadge.remove();
+        }
+      }
 
       const isHighlighted = hoveredComment?.block_ids.includes(block.id) ?? false;
       block.classList.toggle("highlighted-from-panel", isHighlighted);
     });
-  }, [review.selectedBlockIds, review.comments, review.commentsByBlock, review.hoveredCommentId, review.isStale]);
+
+    const activeBlocks = article.querySelectorAll<HTMLElement>(
+      ".commentable-block:is(.selected, .drag-preview, .highlighted-from-panel)"
+    );
+    const gutterBlocks = article.querySelectorAll<HTMLElement>(
+      ".commentable-block:is(.selected, .drag-preview)"
+    );
+
+    blocks.forEach((b) => {
+      b.classList.remove("merge-bottom", "merge-top", "gutter-merge-bottom", "gutter-merge-top");
+      const el = b as HTMLElement;
+      el.style.removeProperty("--merge-gap-above");
+      el.style.removeProperty("--merge-gap-below");
+      el.style.removeProperty("--gutter-gap-above");
+      el.style.removeProperty("--gutter-gap-below");
+    });
+
+    for (let i = 0; i < activeBlocks.length - 1; i++) {
+      const a = activeBlocks[i].getBoundingClientRect();
+      const b = activeBlocks[i + 1].getBoundingClientRect();
+      const gap = b.top - a.bottom;
+      if (gap >= 0 && gap < 48) {
+        activeBlocks[i].classList.add("merge-bottom");
+        activeBlocks[i + 1].classList.add("merge-top");
+        if (gap > 0) {
+          activeBlocks[i].style.setProperty("--merge-gap-below", `${gap}px`);
+          activeBlocks[i + 1].style.setProperty("--merge-gap-above", `${gap}px`);
+        }
+      }
+    }
+
+    for (let i = 0; i < gutterBlocks.length - 1; i++) {
+      const a = gutterBlocks[i].getBoundingClientRect();
+      const b = gutterBlocks[i + 1].getBoundingClientRect();
+      const gap = b.top - a.bottom;
+      if (gap >= 0 && gap < 48) {
+        gutterBlocks[i].classList.add("gutter-merge-bottom");
+        gutterBlocks[i + 1].classList.add("gutter-merge-top");
+        if (gap > 0) {
+          gutterBlocks[i].style.setProperty("--gutter-gap-below", `${gap}px`);
+          gutterBlocks[i + 1].style.setProperty("--gutter-gap-above", `${gap}px`);
+        }
+      }
+    }
+  }, [review.selectedBlockIds, review.comments, review.commentsByBlock, review.hoveredCommentId, review.isStale, dragSelect.previewBlockIds]);
 
   const handleBlockClick = useCallback(
     (e: React.MouseEvent) => {
       if (embedded && !phase) return;
       const target = e.target as HTMLElement;
+
+      const badge = target.closest(".comment-badge") as HTMLElement | null;
+      if (badge) {
+        e.stopPropagation();
+        setReviewOpen(true);
+        review.setIsPanelOpen(true);
+        return;
+      }
+
       const block = target.closest(".commentable-block");
       if (!block || !block.id) {
         review.clearSelection();
@@ -372,9 +478,22 @@ export function MarkdownViewer({
         <div className="relative flex-1 min-w-0 overflow-hidden">
           {/* Scroll content */}
           <div
+            ref={scrollRef}
             className="absolute inset-0 overflow-auto bg-background"
             onClick={handleBlockClick}
+            onMouseDown={dragSelect.handleMouseDown}
           >
+            {dragSelect.selectionRect && (
+              <div
+                className="block-selection-rect"
+                style={{
+                  left: dragSelect.selectionRect.x,
+                  top: dragSelect.selectionRect.y,
+                  width: dragSelect.selectionRect.width,
+                  height: dragSelect.selectionRect.height,
+                }}
+              />
+            )}
             <div className="max-w-4xl mx-auto p-8">
               {/* Safe: html is produced by comrak (Rust GFM renderer) from local files only */}
               <article

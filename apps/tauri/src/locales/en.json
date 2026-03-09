@@ -6,7 +6,9 @@
     "loading": "Loading...",
     "reload": "Reload",
     "tryAgain": "Try Again",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "copied": "Copied!",
+    "delete": "Delete"
   },
   "home": {
     "tagline": "Intelligent development companion",
@@ -20,10 +22,14 @@
   },
   "chat": {
     "emptyState": "Start a conversation",
+    "loadMore": "Load older messages",
     "you": "You",
     "assistant": "Assistant",
     "placeholder": "Type a message...",
-    "send": "Send"
+    "send": "Send",
+    "clearHistory": "Clear history",
+    "clearHistoryTitle": "Clear session history?",
+    "clearHistoryDescription": "All messages will be removed and a /clear command will be sent to the agent. This action cannot be undone."
   },
   "workspace": {
     "closeTitle": "Close workspace?",
@@ -72,7 +78,8 @@
     "deleteSessionDescription": "Delete <strong>{{name}}</strong>? This action cannot be undone.",
     "deleteSession": "Delete",
     "toggleChat": "Show/hide chat",
-    "togglePlan": "Show/hide plan"
+    "togglePlan": "Show/hide plan",
+    "locatePlan": "Locate plan"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -97,6 +104,14 @@
     "logsEmpty": "No connection events recorded",
     "logsClear": "Clear",
     "logsCopy": "Copy",
+    "modeLabel": "Mode",
+    "modelLabel": "Model",
+    "agentLabel": "Agent",
+    "advancedLabel": "Advanced",
+    "advancedAvailable": "{{count}} available",
+    "unavailableFromAcp": "Unavailable from ACP",
+    "refreshInfo": "Retry fetching session info",
+    "autoSwitchNotice": "Auto-switched mode to {{mode}}.",
     "modeAsk": "Ask",
     "modePlan": "Plan",
     "modeCode": "Code",

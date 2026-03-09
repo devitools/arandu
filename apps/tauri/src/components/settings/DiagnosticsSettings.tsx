@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, AlertCircle, RefreshCw, Copy, Check } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils";
 
 const { invoke } = window.__TAURI__.core;
 
@@ -81,7 +82,7 @@ export function DiagnosticsSettings() {
       `PATH: ${result.path_env}`,
     ];
     try {
-      await navigator.clipboard.writeText(lines.filter(Boolean).join("\n"));
+      await copyToClipboard(lines.filter(Boolean).join("\n"));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {

@@ -6,6 +6,27 @@ use std::process::Command;
 
 const CLI_SCRIPT: &str = r#"#!/bin/bash
 SOCKET="$HOME/.arandu/arandu.sock"
+TCP_HOST="${ARANDU_HOST:-host.docker.internal}"
+TCP_PORT="${ARANDU_PORT:-}"
+
+# TCP mode (sandbox/Docker environment via ARANDU_PORT)
+if [ -n "$TCP_PORT" ]; then
+    if [ "$#" -eq 0 ]; then
+        printf '{"command":"show"}\n' | nc "$TCP_HOST" "$TCP_PORT" -w 2 2>/dev/null && exit 0
+    else
+        FAILED=0
+        for f in "$@"; do
+            ABS="$(cd "$(dirname "$f")" 2>/dev/null && echo "$PWD/$(basename "$f")")"
+            ESCAPED=${ABS//\\/\\\\}
+            ESCAPED=${ESCAPED//\"/\\\"}
+            if ! printf '{"command":"open","path":"%s"}\n' "$ESCAPED" | nc "$TCP_HOST" "$TCP_PORT" -w 2 2>/dev/null; then
+                FAILED=1
+                break
+            fi
+        done
+        [ "$FAILED" -eq 0 ] && exit 0
+    fi
+fi
 
 # Se socket existe, usar IPC (caminho rápido)
 if [ -S "$SOCKET" ]; then
@@ -41,7 +62,7 @@ if [ "$#" -eq 0 ]; then open "$APP"; else
 fi
 "#;
 
-const DISMISSED_FILE: &str = ".cli-install-dismissed";
+const DISMISSED_SETTING_KEY: &str = "cli_install_dismissed";
 
 #[derive(Debug, Serialize, Clone)]
 pub struct InstallResult {
@@ -111,13 +132,12 @@ pub fn install_to_dir(dest_dir: &std::path::Path) -> InstallResult {
     }
 }
 
-pub fn has_been_dismissed(app_data_dir: &PathBuf) -> bool {
-    app_data_dir.join(DISMISSED_FILE).exists()
+pub fn has_been_dismissed(conn: &rusqlite::Connection) -> bool {
+    crate::comments::has_setting(conn, DISMISSED_SETTING_KEY)
 }
 
-pub fn set_dismissed(app_data_dir: &PathBuf) {
-    let _ = fs::create_dir_all(app_data_dir);
-    let _ = fs::write(app_data_dir.join(DISMISSED_FILE), "");
+pub fn set_dismissed(conn: &rusqlite::Connection) {
+    let _ = crate::comments::set_setting(conn, DISMISSED_SETTING_KEY, "1");
 }
 
 pub fn install() -> InstallResult {

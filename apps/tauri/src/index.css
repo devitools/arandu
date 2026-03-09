@@ -299,6 +299,11 @@ html, body, #root {
   transform-origin: center;
 }
 
+.prose .task-list-item > p:first-of-type,
+.prose li:has(> input[type="checkbox"]) > p:first-of-type {
+  display: inline;
+}
+
 /* Animations */
 @keyframes fade-in {
   from {
@@ -331,9 +336,13 @@ html, body, #root {
 .commentable-block {
   position: relative;
   cursor: pointer;
-  padding-left: 8px;
+  padding: 0.35em 8px;
   transition: border-color 0.15s, background-color 0.15s;
-  border-radius: 4px;
+  border-radius: 8px;
+}
+
+.prose .commentable-block {
+  margin-block: 0;
 }
 
 .commentable-block:hover {
@@ -354,6 +363,89 @@ html, body, #root {
 
 .commentable-block.highlighted-from-panel {
   background-color: hsl(var(--accent));
+}
+
+.commentable-block.drag-preview {
+  background-color: hsl(var(--accent) / 0.6);
+}
+
+.commentable-block.merge-bottom {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.commentable-block.merge-top {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.commentable-block:is(.selected, .highlighted-from-panel):is(.merge-top, .merge-bottom) {
+  box-shadow:
+    0 var(--merge-gap-below, 0px) 0 0 hsl(var(--accent)),
+    0 calc(-1 * var(--merge-gap-above, 0px)) 0 0 hsl(var(--accent));
+}
+
+.commentable-block.drag-preview:is(.merge-top, .merge-bottom) {
+  box-shadow:
+    0 var(--merge-gap-below, 0px) 0 0 hsl(var(--accent) / 0.6),
+    0 calc(-1 * var(--merge-gap-above, 0px)) 0 0 hsl(var(--accent) / 0.6);
+}
+
+
+.comment-badge {
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background-color: hsl(var(--foreground));
+  color: hsl(var(--background));
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 1px 4px hsl(var(--foreground) / 0.15);
+}
+
+.commentable-block.has-comment .comment-badge {
+  opacity: 0.75;
+}
+
+.commentable-block.selected:hover .comment-badge--selection {
+  opacity: 0.75;
+}
+
+.comment-badge:hover {
+  opacity: 1 !important;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.comment-badge:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.commentable-block.stale .comment-badge {
+  background-color: hsl(var(--muted-foreground));
+}
+
+.comment-badge svg {
+  flex-shrink: 0;
+}
+
+.block-selection-rect {
+  position: absolute;
+  border: 1.5px solid hsl(var(--ring));
+  background: hsl(var(--ring) / 0.08);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
 }
 
 /* Terminal message grid */
@@ -718,6 +810,11 @@ html, body, #root {
   margin: 0 8px 0 0;
   pointer-events: none;
   position: relative;
+}
+
+.terminal-markdown .task-list-item > p:first-of-type,
+.terminal-markdown li:has(> input[type="checkbox"]) > p:first-of-type {
+  display: inline;
 }
 
 .terminal-markdown .task-list-item input[type="checkbox"]:checked,

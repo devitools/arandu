@@ -4,7 +4,7 @@ import '@/lib/i18n';
 
 globalThis.__TAURI__ = {
   core: {
-    invoke: vi.fn(),
+    invoke: vi.fn().mockResolvedValue([]),
   },
   window: {
     getCurrentWindow: vi.fn(() => ({

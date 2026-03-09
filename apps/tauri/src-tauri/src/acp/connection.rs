@@ -1,15 +1,69 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::types::*;
+use crate::messages::MessageRecord;
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, JsonRpcError>>>>>;
 type ChildRef = Arc<Mutex<Option<Child>>>;
+
+fn save_to_db(
+    saved: &mut Vec<MessageRecord>,
+    workspace_id: &str,
+    app_handle: &AppHandle,
+    role: &str,
+    content: &str,
+    message_type: Option<&str>,
+    tool_call_id: Option<&str>,
+    tool_title: Option<&str>,
+    tool_status: Option<&str>,
+) {
+    if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+        if let Ok(conn) = db.0.lock() {
+            match crate::messages::save_message(
+                &conn, workspace_id, role, content,
+                message_type, tool_call_id, tool_title, tool_status,
+            ) {
+                Ok(record) => {
+                    eprintln!("[acp] save_to_db: id={} type={:?} len={}", record.id, record.message_type, content.len());
+                    saved.push(record);
+                }
+                Err(e) => eprintln!("[acp] save_to_db error: {}", e),
+            }
+        }
+    }
+}
+
+fn flush_buffer(
+    streaming_buffer: &mut Option<String>,
+    streaming_type: &mut Option<String>,
+    saved: &mut Vec<MessageRecord>,
+    workspace_id: &str,
+    app_handle: &AppHandle,
+) {
+    let content = match streaming_buffer.take() {
+        Some(c) if !c.is_empty() => c,
+        _ => {
+            *streaming_type = None;
+            return;
+        }
+    };
+    let msg_type = streaming_type.take();
+    let effective_type = match msg_type.as_deref() {
+        Some("assistant") => None,
+        _ => msg_type,
+    };
+    save_to_db(
+        saved, workspace_id, app_handle,
+        "assistant", &content,
+        effective_type.as_deref(), None, None, None,
+    );
+}
 
 pub struct AcpConnection {
     child: ChildRef,
@@ -21,6 +75,7 @@ pub struct AcpConnection {
     heartbeat_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     app_handle: AppHandle,
     workspace_id: String,
+    suppress_updates: Arc<AtomicBool>,
 }
 
 impl AcpConnection {
@@ -48,10 +103,12 @@ impl AcpConnection {
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", binary, e))?;
 
+        eprintln!("[acp] Spawned {} pid={:?} cwd={} workspace={}", binary, child.id(), cwd, workspace_id);
         let stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+        let suppress_updates = Arc::new(AtomicBool::new(false));
         let (writer_tx, writer_rx) = mpsc::channel::<String>(64);
 
         let writer_handle = tokio::spawn(Self::writer_task(stdin, writer_rx));
@@ -61,6 +118,7 @@ impl AcpConnection {
             writer_tx.clone(),
             workspace_id.clone(),
             app_handle.clone(),
+            suppress_updates.clone(),
         ));
 
         let child_arc: ChildRef = Arc::new(Mutex::new(Some(child)));
@@ -84,6 +142,7 @@ impl AcpConnection {
             heartbeat_handle: Mutex::new(Some(heartbeat_handle)),
             app_handle,
             workspace_id,
+            suppress_updates,
         })
     }
 
@@ -107,9 +166,13 @@ impl AcpConnection {
         writer_tx: mpsc::Sender<String>,
         workspace_id: String,
         app_handle: AppHandle,
+        suppress_updates: Arc<AtomicBool>,
     ) {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
+        let mut streaming_buffer: Option<String> = None;
+        let mut streaming_type: Option<String> = None;
+        let mut saved_this_turn: Vec<MessageRecord> = Vec::new();
 
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
@@ -147,6 +210,10 @@ impl AcpConnection {
                                 params,
                                 &workspace_id,
                                 &app_handle,
+                                &mut streaming_buffer,
+                                &mut streaming_type,
+                                &mut saved_this_turn,
+                                &suppress_updates,
                             );
                         }
                     }
@@ -180,6 +247,7 @@ impl AcpConnection {
             attempt: None,
         };
         let _ = app_handle.emit("acp:connection-status", &event);
+        emit_session_disconnected(&app_handle, &workspace_id);
     }
 
     async fn heartbeat_task(
@@ -190,12 +258,15 @@ impl AcpConnection {
         workspace_id: String,
         app_handle: AppHandle,
     ) {
-        let interval = std::time::Duration::from_secs(15);
-        let ping_timeout = std::time::Duration::from_secs(5);
+        // Ping at most every 60s; only send ping if no recent activity (>45s idle)
+        let check_interval = std::time::Duration::from_secs(60);
+        let idle_threshold = std::time::Duration::from_secs(45);
+        let ping_timeout = std::time::Duration::from_secs(10);
         let mut consecutive_failures: u32 = 0;
+        let mut last_activity = std::time::Instant::now();
 
         loop {
-            tokio::time::sleep(interval).await;
+            tokio::time::sleep(check_interval).await;
 
             {
                 let mut guard = child.lock().await;
@@ -207,11 +278,12 @@ impl AcpConnection {
                             drop(guard);
                             emit_log_raw(&app_handle, &workspace_id, "error", "process_exit", &format!("Process exited with status: {:?}", status));
                             let event = ConnectionStatusEvent {
-                                workspace_id,
+                                workspace_id: workspace_id.clone(),
                                 status: "disconnected".to_string(),
                                 attempt: None,
                             };
                             let _ = app_handle.emit("acp:connection-status", &event);
+                            emit_session_disconnected(&app_handle, &workspace_id);
                             return;
                         }
                         Ok(None) => {}
@@ -222,6 +294,12 @@ impl AcpConnection {
                 } else {
                     return;
                 }
+            }
+
+            // Skip ping if there was recent activity
+            if last_activity.elapsed() < idle_threshold {
+                consecutive_failures = 0;
+                continue;
             }
 
             let id = next_id.fetch_add(1, Ordering::SeqCst);
@@ -241,11 +319,12 @@ impl AcpConnection {
                 pending.lock().await.remove(&id);
                 if consecutive_failures >= 3 {
                     let event = ConnectionStatusEvent {
-                        workspace_id,
+                        workspace_id: workspace_id.clone(),
                         status: "disconnected".to_string(),
                         attempt: None,
                     };
                     let _ = app_handle.emit("acp:connection-status", &event);
+                    emit_session_disconnected(&app_handle, &workspace_id);
                     return;
                 }
                 continue;
@@ -256,6 +335,8 @@ impl AcpConnection {
                 Ok(_) => {
                     let latency = start.elapsed().as_millis() as u64;
                     consecutive_failures = 0;
+                    last_activity = std::time::Instant::now();
+                    eprintln!("[acp] Heartbeat OK: workspace={} latency={}ms", workspace_id, latency);
                     let event = HeartbeatEvent {
                         workspace_id: workspace_id.clone(),
                         status: "healthy".to_string(),
@@ -278,11 +359,12 @@ impl AcpConnection {
                     if consecutive_failures >= 3 {
                         emit_log_raw(&app_handle, &workspace_id, "error", "disconnect", "Disconnected after 3 consecutive ping timeouts");
                         let event = ConnectionStatusEvent {
-                            workspace_id,
+                            workspace_id: workspace_id.clone(),
                             status: "disconnected".to_string(),
                             attempt: None,
                         };
                         let _ = app_handle.emit("acp:connection-status", &event);
+                        emit_session_disconnected(&app_handle, &workspace_id);
                         return;
                     }
                 }
@@ -294,6 +376,10 @@ impl AcpConnection {
         params: &serde_json::Value,
         workspace_id: &str,
         app_handle: &AppHandle,
+        streaming_buffer: &mut Option<String>,
+        streaming_type: &mut Option<String>,
+        saved_this_turn: &mut Vec<MessageRecord>,
+        suppress_updates: &Arc<AtomicBool>,
     ) {
         let update_type = params
             .get("update")
@@ -311,6 +397,112 @@ impl AcpConnection {
             .get("update")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+
+        let suppressed = suppress_updates.load(Ordering::Acquire);
+        eprintln!("[acp] session_update: workspace={} type={} suppressed={} saved={}", workspace_id, update_type, suppressed, saved_this_turn.len());
+
+        let is_config_update = matches!(
+            update_type,
+            "session_modes" | "session_info_update" | "config_options_update" | "config_option_update" | "current_mode_update"
+        );
+
+        if suppressed && !is_config_update {
+            if update_type == "end_turn" {
+                streaming_buffer.take();
+                *streaming_type = None;
+                saved_this_turn.clear();
+                eprintln!("[acp] end_turn: session={} suppressed (replay drain)", workspace_id);
+            }
+            return;
+        }
+
+        match update_type {
+            "agent_message_chunk" => {
+                if let Some(text) = payload
+                    .get("content")
+                    .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
+                {
+                    if *streaming_type == Some("thinking".to_string()) {
+                        flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                    }
+                    let buf = streaming_buffer.get_or_insert_with(String::new);
+                    buf.push_str(text);
+                    *streaming_type = Some("assistant".to_string());
+                }
+            }
+            "agent_thought_chunk" => {
+                if let Some(text) = payload
+                    .get("content")
+                    .and_then(|c| if c.get("type").and_then(|t| t.as_str()) == Some("text") { c.get("text").and_then(|t| t.as_str()) } else { None })
+                {
+                    if *streaming_type == Some("assistant".to_string()) {
+                        flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                    }
+                    let buf = streaming_buffer.get_or_insert_with(String::new);
+                    buf.push_str(text);
+                    *streaming_type = Some("thinking".to_string());
+                }
+            }
+            "tool_call" => {
+                flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("Tool call");
+                let tool_call_id = payload.get("toolCallId").and_then(|v| v.as_str());
+                let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+                save_to_db(
+                    saved_this_turn, workspace_id, app_handle,
+                    "assistant", "",
+                    Some("tool"), tool_call_id, Some(title), Some(status),
+                );
+            }
+            "tool_call_update" => {
+                let tool_call_id = payload.get("toolCallId").and_then(|v| v.as_str());
+                let status = payload.get("status").and_then(|v| v.as_str());
+                if let (Some(tcid), Some(st)) = (tool_call_id, status) {
+                    let mut new_content: Option<String> = None;
+                    if st == "completed" {
+                        if let Some(summary) = payload.get("rawOutput")
+                            .and_then(|o| o.get("content"))
+                            .and_then(|c| c.as_str())
+                        {
+                            new_content = Some(summary.to_string());
+                        }
+                    }
+                    if let Some(db) = app_handle.try_state::<crate::comments::CommentsDb>() {
+                        if let Ok(conn) = db.0.lock() {
+                            match crate::messages::update_message_by_tool_call_id(
+                                &conn, workspace_id, tcid,
+                                new_content.as_deref(), st,
+                            ) {
+                                Ok(updated) => {
+                                    if let Some(record) = saved_this_turn.iter_mut().rev()
+                                        .find(|r| r.tool_call_id.as_deref() == Some(tcid))
+                                    {
+                                        *record = updated;
+                                    }
+                                }
+                                Err(e) => eprintln!("[acp] tool_call_update: update error: {}", e),
+                            }
+                        }
+                    }
+                }
+            }
+            "end_turn" => {
+                flush_buffer(streaming_buffer, streaming_type, saved_this_turn, workspace_id, app_handle);
+                let to_emit = std::mem::take(saved_this_turn);
+                if !to_emit.is_empty() {
+                    eprintln!("[acp] end_turn: session={} emitting {} saved messages", workspace_id, to_emit.len());
+                    let _ = app_handle.emit("acp:assistant-message-saved", serde_json::json!({
+                        "sessionId": workspace_id,
+                        "messages": to_emit,
+                    }));
+                }
+            }
+            _ => {
+                if update_type == "unknown" {
+                    eprintln!("[acp] unknown update_type — raw params: {}", serde_json::to_string(params).unwrap_or_default().chars().take(500).collect::<String>());
+                }
+            }
+        }
 
         let event = SessionUpdateEvent {
             workspace_id: workspace_id.to_string(),
@@ -357,6 +549,73 @@ impl AcpConnection {
             .map_err(|_| "Response channel dropped".to_string())?;
 
         result.map_err(|e| e.to_string())
+    }
+
+    /// Send a session/prompt request and persist the user message to SQLite.
+    /// Centralizes user-message persistence so it happens exactly once per send,
+    /// regardless of how many times the frontend invokes the command.
+    pub fn set_suppress_updates(&self, suppress: bool) {
+        self.suppress_updates.store(suppress, Ordering::Release);
+        eprintln!("[acp] suppress_updates={} workspace={}", suppress, self.workspace_id);
+    }
+
+    pub async fn send_prompt(
+        &self,
+        acp_session_id: String,
+        text: String,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, String> {
+        let was_suppressed = self.suppress_updates.swap(false, Ordering::AcqRel);
+        eprintln!("[acp] send_prompt: workspace={} was_suppressed={} text_len={}", self.workspace_id, was_suppressed, text.len());
+        if !text.starts_with('/') {
+            if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
+                match db.0.lock() {
+                    Ok(conn) => {
+                        if crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, &text) {
+                            eprintln!("[acp] send_prompt: skipping duplicate user message");
+                        } else {
+                            match crate::messages::save_message(
+                                &conn,
+                                &self.workspace_id,
+                                "user",
+                                &text,
+                                None,
+                                None,
+                                None,
+                                None,
+                            ) {
+                                Ok(record) => {
+                                    eprintln!("[acp] send_prompt: saved user message id={}", record.id);
+                                    let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
+                                        "sessionId": &self.workspace_id,
+                                        "id": record.id,
+                                        "content": &text,
+                                    }));
+                                }
+                                Err(e) => eprintln!("[acp] send_prompt: save_message FAILED: {}", e),
+                            }
+                        }
+                    },
+                    Err(e) => eprintln!("[acp] send_prompt: db lock FAILED: {}", e),
+                }
+            } else {
+                eprintln!("[acp] send_prompt: CommentsDb state NOT FOUND");
+            }
+        }
+
+        let params = crate::acp::types::PromptParams {
+            session_id: acp_session_id,
+            prompt: vec![crate::acp::types::PromptContent {
+                r#type: "text".to_string(),
+                text,
+            }],
+        };
+        self.send_request_with_timeout(
+            "session/prompt",
+            Some(serde_json::to_value(&params).map_err(|e| e.to_string())?),
+            timeout,
+        )
+        .await
     }
 
     pub async fn send_notification(
@@ -431,6 +690,14 @@ impl AcpConnection {
         };
         let _ = self.app_handle.emit("acp:log", &entry);
     }
+}
+
+pub fn emit_session_disconnected(app_handle: &AppHandle, workspace_id: &str) {
+    let event = serde_json::json!({
+        "sessionId": workspace_id,
+        "status": "disconnected",
+    });
+    let _ = app_handle.emit("acp:session-status", &event);
 }
 
 pub fn emit_log_raw(app_handle: &AppHandle, workspace_id: &str, level: &str, event: &str, message: &str) {

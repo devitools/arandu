@@ -96,12 +96,57 @@ pub struct CancelParams {
     pub session_id: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetConfigOptionParams {
+    pub session_id: String,
+    pub config_id: String,
+    pub value: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOptionsState {
+    #[serde(default)]
+    pub available_config_options: Vec<SessionConfigOption>,
+    #[serde(default)]
+    pub selected_config_options: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOption {
+    pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    #[serde(rename = "type")]
+    pub option_type: Option<String>,
+    #[serde(default)]
+    pub options: Vec<SessionConfigOptionValue>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOptionValue {
+    pub id: Option<String>,
+    pub value: Option<String>,
+    pub name: Option<String>,
+    pub label: Option<String>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     #[serde(default)]
     pub session_id: String,
     pub modes: Option<SessionModeState>,
+    #[serde(default)]
+    pub config_options: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

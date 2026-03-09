@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PlanPhase } from "@/types";
+import type { AcpSessionMode } from "@/types/acp";
 
 interface UsePlanWorkflowReturn {
   phase: PlanPhase;
@@ -9,10 +10,12 @@ interface UsePlanWorkflowReturn {
   approvePlan: (reviewMarkdown?: string) => Promise<void>;
   requestChanges: (feedback: string) => Promise<void>;
   setPhase: (phase: PlanPhase) => void;
+  locatePlan: () => Promise<string | null>;
 }
 
 interface UsePlanWorkflowParams {
   workspaceId: string;
+  workspacePath: string;
   activeSessionId: string | null;
   acpSessionId: string | null;
   localSessionId: string | null;
@@ -20,14 +23,16 @@ interface UsePlanWorkflowParams {
   sessionPlanFilePath: string | null;
   agentPlanFilePath: string | null;
   isStreaming: boolean;
-  availableModes: string[];
+  availableModes: AcpSessionMode[];
   sendPrompt: (text: string) => Promise<void>;
-  setMode: (mode: string) => Promise<void>;
+  setMode: (mode: string, options?: { origin?: "user" | "workflow" }) => Promise<boolean>;
   onPhaseChange?: (phase: PlanPhase) => void;
+  onAutoSwitchMode?: (modeId: string) => void;
 }
 
 export function usePlanWorkflow({
   workspaceId,
+  workspacePath,
   activeSessionId,
   acpSessionId,
   localSessionId,
@@ -38,14 +43,16 @@ export function usePlanWorkflow({
   sendPrompt,
   setMode,
   onPhaseChange,
+  onAutoSwitchMode,
 }: UsePlanWorkflowParams): UsePlanWorkflowReturn {
   const [phase, setPhaseRaw] = useState<PlanPhase>(initialPhase ?? "idle");
-  const [planFilePath, setPlanFilePath] = useState<string | null>(
-    sessionPlanFilePath
-  );
+  const validStoredPath = sessionPlanFilePath || null;
+  const [planFilePath, setPlanFilePath] = useState<string | null>(validStoredPath);
 
   const onPhaseChangeRef = useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
+  const onAutoSwitchModeRef = useRef(onAutoSwitchMode);
+  onAutoSwitchModeRef.current = onAutoSwitchMode;
 
   const setPhase = useCallback((p: PlanPhase) => {
     setPhaseRaw(p);
@@ -71,21 +78,15 @@ export function usePlanWorkflow({
     }
   }, [agentPlanFilePath, localSessionId]);
 
-  useEffect(() => {
-    if (planFilePath || !localSessionId) return;
-    invoke<string>("plan_path", { sessionId: localSessionId })
-      .then(setPlanFilePath)
-      .catch(console.error);
-  }, [localSessionId, planFilePath]);
-
   const availableModesRef = useRef(availableModes);
   availableModesRef.current = availableModes;
 
   const startPlanning = useCallback(
-    async (sessionId: string, prompt: string) => {
+    async (_sessionId: string, prompt: string) => {
       const planMode = findModeBySlug(availableModesRef.current, "plan");
       if (planMode) {
-        await setModeRef.current(planMode);
+        const switched = await setModeRef.current(planMode, { origin: "workflow" });
+        if (switched) onAutoSwitchModeRef.current?.(planMode);
       }
 
       setPhase("planning");
@@ -107,7 +108,8 @@ export function usePlanWorkflow({
 
       const agentMode = findModeBySlug(availableModesRef.current, "agent");
       if (agentMode) {
-        await setModeRef.current(agentMode);
+        const switched = await setModeRef.current(agentMode, { origin: "workflow" });
+        if (switched) onAutoSwitchModeRef.current?.(agentMode);
       }
 
       setPhase("executing");
@@ -145,6 +147,39 @@ export function usePlanWorkflow({
     [localSessionId]
   );
 
+  const locatePlan = useCallback(async (): Promise<string | null> => {
+    if (!localSessionId) return null;
+    try {
+      if (sessionPlanFilePath) {
+        const exists = await invoke<string>("read_file", { path: sessionPlanFilePath }).catch(() => null);
+        if (exists) {
+          setPlanFilePath(sessionPlanFilePath);
+          return sessionPlanFilePath;
+        }
+      }
+      const path = await invoke<string>("plan_path", { sessionId: localSessionId });
+      const content = await invoke<string>("plan_read", { sessionId: localSessionId });
+      if (!content) return null;
+      setPlanFilePath(path);
+      invoke("session_update_plan_file_path", {
+        id: localSessionId,
+        planFilePath: path,
+      }).catch(console.error);
+      return path;
+    } catch {
+      return null;
+    }
+  }, [localSessionId, sessionPlanFilePath]);
+
+  const locatePlanRef = useRef(locatePlan);
+  locatePlanRef.current = locatePlan;
+  useEffect(() => {
+    if (!planFilePath && initialPhase && initialPhase !== "idle") {
+      locatePlanRef.current();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
     phase,
     planFilePath,
@@ -152,16 +187,19 @@ export function usePlanWorkflow({
     approvePlan,
     requestChanges,
     setPhase,
+    locatePlan,
   };
 }
 
 function findModeBySlug(
-  availableModes: string[],
+  availableModes: AcpSessionMode[],
   slug: string
 ): string | null {
+  const slugLower = slug.toLowerCase();
   return (
-    availableModes.find((id) => id.endsWith(`#${slug}`)) ??
-    availableModes.find((id) => id.includes(slug)) ??
+    availableModes.find((m) => m.id.endsWith(`#${slugLower}`))?.id ??
+    availableModes.find((m) => m.id.toLowerCase().includes(slugLower))?.id ??
+    availableModes.find((m) => m.name?.toLowerCase().includes(slugLower))?.id ??
     null
   );
 }

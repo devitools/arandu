@@ -55,16 +55,15 @@ export type PlanPhase = "idle" | "planning" | "reviewing" | "executing" | "done"
 
 export interface SessionRecord {
   id: string;
-  workspace_path: string;
+  workspace_id: string;
   acp_session_id: string | null;
   name: string;
   initial_prompt: string;
-  plan_markdown: string;
   plan_file_path: string | null;
   phase: PlanPhase;
-  chat_panel_size: number | null;
-  created_at: string;
-  updated_at: string;
+  acp_preferences_json: string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface SessionTab {

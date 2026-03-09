@@ -13,7 +13,7 @@ mod acp;
 #[cfg(target_os = "macos")]
 mod cli_installer;
 mod comments;
-mod history;
+mod messages;
 mod plan_file;
 mod sessions;
 mod ipc_common;
@@ -184,18 +184,21 @@ fn get_home_dir() -> Option<String> {
 }
 
 #[tauri::command]
-fn check_cli_status(app: tauri::AppHandle) -> CliStatus {
+fn check_cli_status(app: tauri::AppHandle, db: tauri::State<comments::CommentsDb>) -> CliStatus {
     #[cfg(target_os = "macos")]
     {
-        let app_data_dir = app.path().app_data_dir().unwrap_or_default();
+        let _ = app;
+        let dismissed = db.0.lock()
+            .map(|conn| cli_installer::has_been_dismissed(&conn))
+            .unwrap_or(false);
         CliStatus {
             installed: cli_installer::is_cli_installed(),
-            dismissed: cli_installer::has_been_dismissed(&app_data_dir),
+            dismissed,
         }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, db);
         CliStatus {
             installed: true,
             dismissed: true,
@@ -225,15 +228,17 @@ fn install_cli() -> InstallResult {
 }
 
 #[tauri::command]
-fn dismiss_cli_prompt(app: tauri::AppHandle) {
+fn dismiss_cli_prompt(app: tauri::AppHandle, db: tauri::State<comments::CommentsDb>) {
     #[cfg(target_os = "macos")]
     {
-        let app_data_dir = app.path().app_data_dir().unwrap_or_default();
-        cli_installer::set_dismissed(&app_data_dir);
+        let _ = app;
+        if let Ok(conn) = db.0.lock() {
+            cli_installer::set_dismissed(&conn);
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
+        let _ = (app, db);
     }
 }
 
@@ -490,11 +495,12 @@ fn load_comments(
 #[tauri::command]
 fn save_comments(
     markdown_path: String,
+    workspace_id: String,
     comments_data: comments::CommentsData,
     db: tauri::State<comments::CommentsDb>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    comments::save_comments(&conn, &markdown_path, &comments_data)
+    comments::save_comments(&conn, &markdown_path, &workspace_id, &comments_data)
 }
 
 #[tauri::command]
@@ -775,6 +781,7 @@ pub fn run() {
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)))
         .manage(acp::commands::AcpState::default())
+        .manage(acp::commands::AcpSessionStore::default())
         .manage(whisper::watcher::WhisperWatcherState {
             models_watcher: Mutex::new(None),
             settings_watcher: Mutex::new(None),
@@ -827,8 +834,6 @@ pub fn run() {
             let app_data = app.path().app_data_dir()
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             let conn = comments::init_db(&app_data)
-                .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
-            sessions::init_sessions_table(&conn)
                 .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
             app.manage(comments::CommentsDb(Mutex::new(conn)));
 
@@ -934,11 +939,6 @@ pub fn run() {
             save_comments,
             count_unresolved_comments,
             hash_file,
-            history::load_history,
-            history::save_history,
-            history::add_to_history,
-            history::remove_from_history,
-            history::clear_history,
             show_whisper_window,
             hide_whisper_window,
             show_settings_window,
@@ -974,20 +974,38 @@ pub fn run() {
             acp::commands::acp_set_mode,
             acp::commands::acp_cancel,
             acp::commands::acp_check_health,
+            acp::commands::acp_session_connect,
+            acp::commands::acp_session_disconnect,
+            acp::commands::acp_session_status,
+            acp::commands::acp_session_send_prompt,
+            acp::commands::acp_session_set_mode,
+            acp::commands::acp_session_set_config_option,
+            acp::commands::acp_session_cancel,
+            acp::commands::acp_session_list_active,
+            acp::commands::acp_session_check_health,
+            acp::commands::acp_session_refresh_info,
             sessions::count_workspace_sessions,
+            sessions::workspace_list,
+            sessions::workspace_upsert,
+            sessions::workspace_touch,
+            sessions::workspace_delete,
             sessions::session_list,
             sessions::session_create,
             sessions::session_get,
             sessions::session_update_acp_id,
-            sessions::session_update_plan,
             sessions::session_update_plan_file_path,
             sessions::session_update_phase,
-            sessions::session_update_chat_panel_size,
             sessions::session_delete,
+            sessions::session_update_acp_preferences,
+            sessions::workspace_acp_defaults_get,
+            sessions::workspace_acp_defaults_set,
             sessions::forget_workspace_data,
             plan_file::plan_write,
             plan_file::plan_read,
             plan_file::plan_path,
+            messages::messages_list,
+            messages::messages_count,
+            messages::messages_delete_session,
             run_diagnostics,
         ])
         .build(tauri::generate_context!())
@@ -1008,6 +1026,10 @@ pub fn run() {
                     {
                         let acp_state = app_handle.state::<acp::commands::AcpState>();
                         tauri::async_runtime::block_on(acp::commands::disconnect_all(&acp_state));
+                    }
+                    {
+                        let acp_session_store = app_handle.state::<acp::commands::AcpSessionStore>();
+                        tauri::async_runtime::block_on(acp::commands::disconnect_all_sessions(&acp_session_store));
                     }
                     return;
                 }
