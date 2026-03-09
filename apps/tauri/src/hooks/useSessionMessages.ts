@@ -95,10 +95,16 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
       if (msgSessionId !== sessionId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === id)) return prev;
-        const withoutOptimistic = prev.filter(
-          (m) => !(m.id.startsWith("optimistic-") && m.role === "user" && m.content === content)
+        const idx = prev.findIndex(
+          (m) => m.id.startsWith("optimistic-") && m.role === "user" && m.content === content
         );
-        return [...withoutOptimistic, { id, role: "user", content, timestamp: new Date() }];
+        const persisted: AcpMessage = { id, role: "user", content, timestamp: new Date() };
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = persisted;
+          return updated;
+        }
+        return [...prev, persisted];
       });
     });
     return () => { void unlisten.then((fn) => fn()); };
