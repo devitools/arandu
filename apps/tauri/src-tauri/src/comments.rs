@@ -229,29 +229,46 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<(), String> {
         CREATE INDEX idx_sessions_workspace ON sessions(workspace_id, updated_at DESC);"
     ).map_err(|e| format!("Migrate sessions: {}", e))?;
 
-    // --- messages: add FK, convert timestamps ---
-    tx.execute_batch(
-        "CREATE TABLE messages_v2 (
-            id              TEXT    PRIMARY KEY,
-            session_id      TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-            role            TEXT    NOT NULL CHECK (role IN ('user', 'assistant')),
-            content         TEXT    NOT NULL,
-            message_type    TEXT    CHECK (message_type IS NULL OR message_type IN ('thinking', 'tool', 'notice')),
-            tool_call_id    TEXT,
-            tool_title      TEXT,
-            tool_status     TEXT,
-            created_at      INTEGER NOT NULL
-        );
-        INSERT OR IGNORE INTO messages_v2 (id, session_id, role, content, message_type, tool_call_id, tool_title, tool_status, created_at)
-            SELECT m.id, m.session_id, m.role, m.content, m.message_type,
-                   m.tool_call_id, m.tool_title, m.tool_status,
-                   CAST(strftime('%s', m.created_at) AS INTEGER)
-            FROM messages m
-            WHERE m.session_id IN (SELECT id FROM sessions);
-        DROP TABLE messages;
-        ALTER TABLE messages_v2 RENAME TO messages;
-        CREATE INDEX idx_messages_session ON messages(session_id, created_at);"
-    ).map_err(|e| format!("Migrate messages: {}", e))?;
+    // --- messages: add FK, convert timestamps (table may not exist on v0.12.0) ---
+    if has_table(&tx, "messages") {
+        tx.execute_batch(
+            "CREATE TABLE messages_v2 (
+                id              TEXT    PRIMARY KEY,
+                session_id      TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                role            TEXT    NOT NULL CHECK (role IN ('user', 'assistant')),
+                content         TEXT    NOT NULL,
+                message_type    TEXT    CHECK (message_type IS NULL OR message_type IN ('thinking', 'tool', 'notice')),
+                tool_call_id    TEXT,
+                tool_title      TEXT,
+                tool_status     TEXT,
+                created_at      INTEGER NOT NULL
+            );
+            INSERT OR IGNORE INTO messages_v2 (id, session_id, role, content, message_type, tool_call_id, tool_title, tool_status, created_at)
+                SELECT m.id, m.session_id, m.role, m.content, m.message_type,
+                       m.tool_call_id, m.tool_title, m.tool_status,
+                       CAST(strftime('%s', m.created_at) AS INTEGER)
+                FROM messages m
+                WHERE m.session_id IN (SELECT id FROM sessions);
+            DROP TABLE messages;
+            ALTER TABLE messages_v2 RENAME TO messages;
+            CREATE INDEX idx_messages_session ON messages(session_id, created_at);"
+        ).map_err(|e| format!("Migrate messages: {}", e))?;
+    } else {
+        tx.execute_batch(
+            "CREATE TABLE messages (
+                id              TEXT    PRIMARY KEY,
+                session_id      TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                role            TEXT    NOT NULL CHECK (role IN ('user', 'assistant')),
+                content         TEXT    NOT NULL,
+                message_type    TEXT    CHECK (message_type IS NULL OR message_type IN ('thinking', 'tool', 'notice')),
+                tool_call_id    TEXT,
+                tool_title      TEXT,
+                tool_status     TEXT,
+                created_at      INTEGER NOT NULL
+            );
+            CREATE INDEX idx_messages_session ON messages(session_id, created_at);"
+        ).map_err(|e| format!("Create messages table: {}", e))?;
+    }
 
     // --- comments: add workspace_id FK, normalize block_ids → comment_blocks ---
     tx.execute_batch(
