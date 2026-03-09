@@ -110,6 +110,7 @@
     "advancedLabel": "Avançado",
     "advancedAvailable": "{{count}} disponíveis",
     "unavailableFromAcp": "Indisponível no ACP",
+    "refreshInfo": "Tentar obter informações da sessão",
     "autoSwitchNotice": "Modo alterado automaticamente para {{mode}}.",
     "modeAsk": "Perguntar",
     "modePlan": "Plano",

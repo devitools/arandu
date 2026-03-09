@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -6,7 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RefreshCw, Loader2 } from "lucide-react";
 import type { AcpSessionMode, AcpSessionConfigOption } from "@/types/acp";
 
 interface AcpSessionControlsProps {
@@ -17,6 +17,7 @@ interface AcpSessionControlsProps {
   selectedConfigOptions: Record<string, string>;
   onSelectMode: (modeId: string) => void;
   onSelectConfigOption: (configId: string, optionId: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 function extractModeName(mode: AcpSessionMode): string {
@@ -40,8 +41,20 @@ export function AcpSessionControls({
   selectedConfigOptions,
   onSelectMode,
   onSelectConfigOption,
+  onRefresh,
 }: AcpSessionControlsProps) {
   const { t } = useTranslation();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onRefresh, refreshing]);
 
   const { modelOption, agentOption, advancedOptions } = useMemo(() => {
     let model: AcpSessionConfigOption | undefined;
@@ -65,16 +78,25 @@ export function AcpSessionControls({
 
   const hasContent = availableModes.length > 0 || configOptions.length > 0;
 
-  if (disabled || !hasContent) {
+  if (!hasContent) {
     return (
-      <span className="text-[10px] text-muted-foreground/40 italic px-1">
+      <button
+        className="flex items-center gap-1 text-[10px] text-muted-foreground/40 px-1 hover:text-muted-foreground transition-colors disabled:opacity-50"
+        onClick={() => void handleRefresh()}
+        disabled={!onRefresh || refreshing}
+        title={onRefresh ? t("acp.refreshInfo") : undefined}
+      >
         {t("acp.unavailableFromAcp")}
-      </span>
+        {onRefresh && (refreshing
+          ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          : <RefreshCw className="h-2.5 w-2.5" />
+        )}
+      </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className={`flex items-center gap-1 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
       {availableModes.length > 0 && (
         <ControlDropdown
           label={t("acp.modeLabel")}

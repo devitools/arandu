@@ -24,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FileSearch, FileText, Loader2, MessageSquare, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
+import { Bot, FileSearch, FileText, Loader2, Minimize2, Plug, Unplug, RefreshCw } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { copyToClipboard } from "@/lib/utils";
 
@@ -285,14 +285,16 @@ export function ActiveSessionView({
     }
   }, [sessionConn, workspacePath, session.acp_session_id, session.id, session.phase, session.initial_prompt, session.name, plan.startPlanning]);
 
-  // Auto-init: connect + send the initial prompt on mount (or when the session changes)
+  // Auto-init: only for new sessions (no acp_session_id yet).
+  // Existing sessions require manual reconnection.
   const doInitRef = useRef(doInit);
   doInitRef.current = doInit;
   useEffect(() => {
     if (initRef.current) return;
+    if (session.acp_session_id) return;
     initRef.current = true;
     doInitRef.current();
-  }, [session.id]); // run once per session
+  }, [session.id, session.acp_session_id]);
 
   // Reset initRef only when acp_session_id transitions from set → cleared (disconnect),
   // NOT on the initial mount with null (which would cause double-init in React 18 StrictMode)
@@ -314,6 +316,14 @@ export function ActiveSessionView({
     }
     await handleConnect();
   }, [handleDisconnect, handleConnect]);
+
+  const handleRefreshInfo = useCallback(async () => {
+    try {
+      await invoke("acp_session_refresh_info", { sessionId: session.id });
+    } catch (e) {
+      console.error("[ActiveSessionView] refresh info error:", e);
+    }
+  }, [session.id]);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleLayout = useCallback((sizes: number[]) => {
@@ -406,17 +416,6 @@ export function ActiveSessionView({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {isConnected && (
-            <AcpSessionControls
-              disabled={!isConnected}
-              currentModeId={currentMode}
-              availableModes={availableModes}
-              configOptions={availableConfigOptions}
-              selectedConfigOptions={selectedConfigOptions}
-              onSelectMode={handleSelectMode}
-              onSelectConfigOption={setConfigOption}
-            />
-          )}
           {isConnecting ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -432,6 +431,16 @@ export function ActiveSessionView({
               <Unplug className="h-3 w-3" />
               {t("acp.disconnect")}
             </Button>
+          ) : session.acp_session_id ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => void handleReconnect()}
+            >
+              <RefreshCw className="h-3 w-3" />
+              {t("acp.reconnect")}
+            </Button>
           ) : (
             <Button
               variant="ghost"
@@ -443,6 +452,16 @@ export function ActiveSessionView({
               {t("acp.connect")}
             </Button>
           )}
+          <AcpSessionControls
+            disabled={!isConnected}
+            currentModeId={currentMode}
+            availableModes={availableModes}
+            configOptions={availableConfigOptions}
+            selectedConfigOptions={selectedConfigOptions}
+            onSelectMode={handleSelectMode}
+            onSelectConfigOption={setConfigOption}
+            onRefresh={isConnected ? handleRefreshInfo : undefined}
+          />
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <Button
@@ -452,7 +471,7 @@ export function ActiveSessionView({
             onClick={handleToggleChat}
             title={t("sessions.toggleChat")}
           >
-            <MessageSquare className="h-3.5 w-3.5" />
+            <Bot className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
