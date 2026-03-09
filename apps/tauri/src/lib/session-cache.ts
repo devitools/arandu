@@ -111,7 +111,7 @@ function processSessionUpdate(entry: SessionEntry, update: AcpSessionUpdate): Se
       const locations = p.locations as Array<{ path: string }> | undefined;
       const rawInput = p.rawInput as Record<string, unknown> | undefined;
       const filePath = locations?.[0]?.path || (rawInput?.path as string) || (rawInput?.file_path as string) || "";
-      if (/\/plan[^/]*\.md$/i.test(filePath)) agentPlanFilePath = filePath;
+      if (/[\\/]plan[^\\/]*\.md$/i.test(filePath)) agentPlanFilePath = filePath;
       isStreaming = true;
       break;
     }

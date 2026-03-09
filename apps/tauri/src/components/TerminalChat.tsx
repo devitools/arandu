@@ -77,8 +77,8 @@ export function TerminalChat({
     const diff = el.scrollHeight - prevScrollHeightRef.current;
     if (diff > 0) {
       el.scrollTop += diff;
-      prevScrollHeightRef.current = 0;
     }
+    prevScrollHeightRef.current = 0;
   });
 
   // IntersectionObserver to trigger loadMore when sentinel enters view

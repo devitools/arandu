@@ -54,10 +54,14 @@ fn flush_buffer(
         }
     };
     let msg_type = streaming_type.take();
+    let effective_type = match msg_type.as_deref() {
+        Some("assistant") => None,
+        _ => msg_type,
+    };
     save_to_db(
         saved, workspace_id, app_handle,
         "assistant", &content,
-        msg_type.as_deref(), None, None, None,
+        effective_type.as_deref(), None, None, None,
     );
 }
 
@@ -243,6 +247,7 @@ impl AcpConnection {
             attempt: None,
         };
         let _ = app_handle.emit("acp:connection-status", &event);
+        emit_session_disconnected(&app_handle, &workspace_id);
     }
 
     async fn heartbeat_task(
@@ -273,11 +278,12 @@ impl AcpConnection {
                             drop(guard);
                             emit_log_raw(&app_handle, &workspace_id, "error", "process_exit", &format!("Process exited with status: {:?}", status));
                             let event = ConnectionStatusEvent {
-                                workspace_id,
+                                workspace_id: workspace_id.clone(),
                                 status: "disconnected".to_string(),
                                 attempt: None,
                             };
                             let _ = app_handle.emit("acp:connection-status", &event);
+                            emit_session_disconnected(&app_handle, &workspace_id);
                             return;
                         }
                         Ok(None) => {}
@@ -313,11 +319,12 @@ impl AcpConnection {
                 pending.lock().await.remove(&id);
                 if consecutive_failures >= 3 {
                     let event = ConnectionStatusEvent {
-                        workspace_id,
+                        workspace_id: workspace_id.clone(),
                         status: "disconnected".to_string(),
                         attempt: None,
                     };
                     let _ = app_handle.emit("acp:connection-status", &event);
+                    emit_session_disconnected(&app_handle, &workspace_id);
                     return;
                 }
                 continue;
@@ -352,11 +359,12 @@ impl AcpConnection {
                     if consecutive_failures >= 3 {
                         emit_log_raw(&app_handle, &workspace_id, "error", "disconnect", "Disconnected after 3 consecutive ping timeouts");
                         let event = ConnectionStatusEvent {
-                            workspace_id,
+                            workspace_id: workspace_id.clone(),
                             status: "disconnected".to_string(),
                             attempt: None,
                         };
                         let _ = app_handle.emit("acp:connection-status", &event);
+                        emit_session_disconnected(&app_handle, &workspace_id);
                         return;
                     }
                 }
@@ -393,7 +401,12 @@ impl AcpConnection {
         let suppressed = suppress_updates.load(Ordering::Acquire);
         eprintln!("[acp] session_update: workspace={} type={} suppressed={} saved={}", workspace_id, update_type, suppressed, saved_this_turn.len());
 
-        if suppressed {
+        let is_config_update = matches!(
+            update_type,
+            "session_modes" | "session_info_update" | "config_options_update" | "config_option_update" | "current_mode_update"
+        );
+
+        if suppressed && !is_config_update {
             if update_type == "end_turn" {
                 streaming_buffer.take();
                 *streaming_type = None;
@@ -554,38 +567,40 @@ impl AcpConnection {
     ) -> Result<serde_json::Value, String> {
         let was_suppressed = self.suppress_updates.swap(false, Ordering::AcqRel);
         eprintln!("[acp] send_prompt: workspace={} was_suppressed={} text_len={}", self.workspace_id, was_suppressed, text.len());
-        if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
-            match db.0.lock() {
-                Ok(conn) => {
-                    if crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, &text) {
-                        eprintln!("[acp] send_prompt: skipping duplicate user message");
-                    } else {
-                        match crate::messages::save_message(
-                            &conn,
-                            &self.workspace_id,
-                            "user",
-                            &text,
-                            None,
-                            None,
-                            None,
-                            None,
-                        ) {
-                            Ok(record) => {
-                                eprintln!("[acp] send_prompt: saved user message id={}", record.id);
-                                let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
-                                    "sessionId": &self.workspace_id,
-                                    "id": record.id,
-                                    "content": &text,
-                                }));
+        if !text.starts_with('/') {
+            if let Some(db) = self.app_handle.try_state::<crate::comments::CommentsDb>() {
+                match db.0.lock() {
+                    Ok(conn) => {
+                        if crate::messages::is_duplicate_user_message(&conn, &self.workspace_id, &text) {
+                            eprintln!("[acp] send_prompt: skipping duplicate user message");
+                        } else {
+                            match crate::messages::save_message(
+                                &conn,
+                                &self.workspace_id,
+                                "user",
+                                &text,
+                                None,
+                                None,
+                                None,
+                                None,
+                            ) {
+                                Ok(record) => {
+                                    eprintln!("[acp] send_prompt: saved user message id={}", record.id);
+                                    let _ = self.app_handle.emit("acp:user-message-saved", serde_json::json!({
+                                        "sessionId": &self.workspace_id,
+                                        "id": record.id,
+                                        "content": &text,
+                                    }));
+                                }
+                                Err(e) => eprintln!("[acp] send_prompt: save_message FAILED: {}", e),
                             }
-                            Err(e) => eprintln!("[acp] send_prompt: save_message FAILED: {}", e),
                         }
-                    }
-                },
-                Err(e) => eprintln!("[acp] send_prompt: db lock FAILED: {}", e),
+                    },
+                    Err(e) => eprintln!("[acp] send_prompt: db lock FAILED: {}", e),
+                }
+            } else {
+                eprintln!("[acp] send_prompt: CommentsDb state NOT FOUND");
             }
-        } else {
-            eprintln!("[acp] send_prompt: CommentsDb state NOT FOUND");
         }
 
         let params = crate::acp::types::PromptParams {
@@ -675,6 +690,14 @@ impl AcpConnection {
         };
         let _ = self.app_handle.emit("acp:log", &entry);
     }
+}
+
+pub fn emit_session_disconnected(app_handle: &AppHandle, workspace_id: &str) {
+    let event = serde_json::json!({
+        "sessionId": workspace_id,
+        "status": "disconnected",
+    });
+    let _ = app_handle.emit("acp:session-status", &event);
 }
 
 pub fn emit_log_raw(app_handle: &AppHandle, workspace_id: &str, level: &str, event: &str, message: &str) {

@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
 export type SessionConnectionStatus =
   | "idle"
@@ -17,6 +19,8 @@ interface UseSessionConnectionReturn {
 
 export function useSessionConnection(sessionId: string): UseSessionConnectionReturn {
   const [status, setStatus] = useState<SessionConnectionStatus>("idle");
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   // Check live status on mount
   useEffect(() => {
@@ -29,10 +33,12 @@ export function useSessionConnection(sessionId: string): UseSessionConnectionRet
   // Listen to per-session status events emitted by backend
   useEffect(() => {
     if (!sessionId) return;
+    let cancelled = false;
     let unlisten: (() => void) | null = null;
 
     window.__TAURI__.event
       .listen<{ sessionId: string; status: string }>("acp:session-status", (event) => {
+        if (cancelled) return;
         if (event.payload.sessionId !== sessionId) return;
         const s = event.payload.status;
         if (s === "connected") setStatus("connected");
@@ -40,12 +46,70 @@ export function useSessionConnection(sessionId: string): UseSessionConnectionRet
         else if (s === "disconnected") setStatus("disconnected");
       })
       .then((fn) => {
-        unlisten = fn;
+        if (cancelled) fn();
+        else unlisten = fn;
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
+  }, [sessionId]);
+
+  // Listen to acp:connection-status events (bridged from heartbeat)
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    window.__TAURI__.event
+      .listen<{ workspaceId: string; status: string }>("acp:connection-status", (event) => {
+        if (cancelled) return;
+        if (event.payload.workspaceId !== sessionId) return;
+        const s = event.payload.status;
+        if (s === "connected") setStatus("connected");
+        else if (s === "disconnected") setStatus("disconnected");
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [sessionId]);
+
+  // Periodic health check (every 30s when connected)
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const check = () => {
+      if (statusRef.current !== "connected") return;
+      invoke<string>("acp_session_check_health", { sessionId }).catch(() => {
+        setStatus("disconnected");
+      });
+    };
+
+    const interval = setInterval(check, HEALTH_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  // Re-check on visibility change (tab regains focus)
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && statusRef.current === "connected") {
+        invoke<string>("acp_session_check_health", { sessionId }).catch(() => {
+          setStatus("disconnected");
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [sessionId]);
 
   const connect = useCallback(

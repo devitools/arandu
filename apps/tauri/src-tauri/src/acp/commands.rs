@@ -375,13 +375,16 @@ pub async fn acp_session_connect(
 ) -> Result<String, String> {
     eprintln!("[acp] acp_session_connect: session={} workspace={}", session_id, workspace_path);
 
-    // Return early if already alive
+    // Return early if already alive (extract Arc before awaiting to avoid holding lock)
     {
-        let instances = store.instances.lock().await;
-        if let Some(inst) = instances.get(&session_id) {
-            if inst.connection.is_alive().await {
-                eprintln!("[acp] session={} already connected, returning existing acp_id={}", session_id, inst.acp_session_id);
-                return Ok(inst.acp_session_id.clone());
+        let check = {
+            let instances = store.instances.lock().await;
+            instances.get(&session_id).map(|inst| (Arc::clone(&inst.connection), inst.acp_session_id.clone()))
+        };
+        if let Some((conn, acp_id)) = check {
+            if conn.is_alive().await {
+                eprintln!("[acp] session={} already connected, returning existing acp_id={}", session_id, acp_id);
+                return Ok(acp_id);
             }
         }
     }
@@ -392,21 +395,21 @@ pub async fn acp_session_connect(
 
     emit_session_status(&app_handle, &session_id, "connecting");
 
-    // Enforce cap: evict LRU if at limit
-    {
+    // Enforce cap: evict oldest if at limit (extract before awaiting to avoid holding lock)
+    let evicted = {
         let mut instances = store.instances.lock().await;
         if instances.len() >= store.max_instances {
-            // Find oldest disconnected instance
-            // Evict the oldest instance (first inserted = index 0)
             let evict_key = instances.keys().next().cloned().unwrap_or_default();
             if !evict_key.is_empty() {
-                if let Some(old) = instances.shift_remove(&evict_key) {
-                    emit_session_status(&app_handle, &evict_key, "disconnected");
-                    eprintln!("[acp] Evicting session {} (LRU cap)", evict_key);
-                    old.connection.shutdown().await;
-                }
-            }
-        }
+                instances.shift_remove(&evict_key).map(|old| (evict_key, old))
+            } else { None }
+        } else { None }
+    };
+    if let Some((evict_key, old)) = evicted {
+        emit_session_status(&app_handle, &evict_key, "disconnected");
+        eprintln!("[acp] Evicting session {} (cap)", evict_key);
+        old.connection.shutdown().await;
+        store.configs.lock().await.remove(&evict_key);
     }
 
     let conn = AcpConnection::spawn(
@@ -442,6 +445,7 @@ pub async fn acp_session_connect(
         let result = conn
             .send_request("session/load", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
             .await?;
+        conn.set_suppress_updates(false);
         let mut info: SessionInfo = serde_json::from_value(result)
             .map_err(|e| format!("Failed to parse session info: {}", e))?;
         if info.session_id.is_empty() {
@@ -508,6 +512,7 @@ pub async fn acp_session_connect(
 #[tauri::command]
 pub async fn acp_session_disconnect(
     session_id: String,
+    app_handle: AppHandle,
     store: State<'_, AcpSessionStore>,
 ) -> Result<(), String> {
     eprintln!("[acp] acp_session_disconnect: session={}", session_id);
@@ -517,6 +522,7 @@ pub async fn acp_session_disconnect(
         inst.connection.emit_log("info", "disconnect", "Disconnected by user");
         inst.connection.shutdown().await;
     }
+    emit_session_status(&app_handle, &session_id, "disconnected");
     Ok(())
 }
 
@@ -526,13 +532,17 @@ pub async fn acp_session_status(
     app_handle: AppHandle,
     store: State<'_, AcpSessionStore>,
 ) -> Result<String, String> {
-    let mut instances = store.instances.lock().await;
-    if let Some(inst) = instances.get(&session_id) {
-        if inst.connection.is_alive().await {
+    let conn = {
+        let instances = store.instances.lock().await;
+        instances.get(&session_id).map(|inst| Arc::clone(&inst.connection))
+    };
+    if let Some(conn) = conn {
+        if conn.is_alive().await {
             return Ok("connected".to_string());
         }
         // Dead — remove and clean up
-        if let Some(inst) = instances.shift_remove(&session_id) {
+        let removed = store.instances.lock().await.shift_remove(&session_id);
+        if let Some(inst) = removed {
             inst.connection.shutdown().await;
         }
         store.configs.lock().await.remove(&session_id);
@@ -627,17 +637,97 @@ pub async fn acp_session_cancel(
 pub async fn acp_session_list_active(
     store: State<'_, AcpSessionStore>,
 ) -> Result<Vec<String>, String> {
-    let instances = store.instances.lock().await;
+    let checks: Vec<(String, Arc<AcpConnection>)> = {
+        let instances = store.instances.lock().await;
+        instances.iter().map(|(id, inst)| (id.clone(), Arc::clone(&inst.connection))).collect()
+    };
     let mut active = Vec::new();
-    for (id, inst) in instances.iter() {
-        if inst.connection.is_alive().await {
-            active.push(id.clone());
+    for (id, conn) in checks {
+        if conn.is_alive().await {
+            active.push(id);
         }
     }
     Ok(active)
 }
 
-#[allow(dead_code)]
+#[tauri::command]
+pub async fn acp_session_check_health(
+    session_id: String,
+    app_handle: AppHandle,
+    store: State<'_, AcpSessionStore>,
+) -> Result<String, String> {
+    let conn = {
+        let instances = store.instances.lock().await;
+        instances.get(&session_id).map(|inst| Arc::clone(&inst.connection))
+    };
+    if let Some(conn) = conn {
+        if conn.is_alive().await {
+            emit_session_status(&app_handle, &session_id, "connected");
+            return Ok("connected".to_string());
+        }
+        let removed = store.instances.lock().await.shift_remove(&session_id);
+        if let Some(inst) = removed {
+            inst.connection.shutdown().await;
+        }
+        store.configs.lock().await.remove(&session_id);
+    }
+    emit_session_status(&app_handle, &session_id, "disconnected");
+    Ok("disconnected".to_string())
+}
+
+#[tauri::command]
+pub async fn acp_session_refresh_info(
+    session_id: String,
+    app_handle: AppHandle,
+    store: State<'_, AcpSessionStore>,
+) -> Result<(), String> {
+    let (conn, acp_id) = {
+        let instances = store.instances.lock().await;
+        let inst = instances.get(&session_id).ok_or("Session not connected")?;
+        (Arc::clone(&inst.connection), inst.acp_session_id.clone())
+    };
+
+    conn.set_suppress_updates(true);
+    let params = LoadSessionParams {
+        session_id: acp_id.clone(),
+        cwd: store.configs.lock().await.get(&session_id)
+            .map(|c| c.cwd.clone())
+            .unwrap_or_default(),
+        mcp_servers: vec![],
+    };
+    let result = conn
+        .send_request("session/load", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+        .await;
+
+    conn.set_suppress_updates(false);
+
+    let result = result?;
+    let info: SessionInfo = serde_json::from_value(result)
+        .map_err(|e| format!("Failed to parse session info: {}", e))?;
+
+    let mut payload = serde_json::json!({});
+    if let Some(ref modes) = info.modes {
+        payload["availableModes"] = serde_json::to_value(&modes.available_modes).unwrap_or_default();
+        payload["currentModeId"] = serde_json::json!(modes.current_mode_id);
+    }
+    if let Some(ref config_val) = info.config_options {
+        if let Some(opts) = config_val.get("availableConfigOptions") {
+            payload["availableConfigOptions"] = opts.clone();
+        }
+        if let Some(sel) = config_val.get("selectedConfigOptions") {
+            payload["selectedConfigOptions"] = sel.clone();
+        }
+    }
+    let _ = app_handle.emit("acp:session-update", SessionUpdateEvent {
+        workspace_id: session_id,
+        session_id: acp_id,
+        update_type: "session_info_update".to_string(),
+        payload,
+    });
+
+    Ok(())
+}
+
 pub async fn disconnect_all_sessions(store: &AcpSessionStore) {
     store.configs.lock().await.clear();
     let mut instances = store.instances.lock().await;

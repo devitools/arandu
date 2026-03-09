@@ -982,6 +982,8 @@ pub fn run() {
             acp::commands::acp_session_set_config_option,
             acp::commands::acp_session_cancel,
             acp::commands::acp_session_list_active,
+            acp::commands::acp_session_check_health,
+            acp::commands::acp_session_refresh_info,
             sessions::count_workspace_sessions,
             sessions::workspace_list,
             sessions::workspace_upsert,
@@ -1024,6 +1026,10 @@ pub fn run() {
                     {
                         let acp_state = app_handle.state::<acp::commands::AcpState>();
                         tauri::async_runtime::block_on(acp::commands::disconnect_all(&acp_state));
+                    }
+                    {
+                        let acp_session_store = app_handle.state::<acp::commands::AcpSessionStore>();
+                        tauri::async_runtime::block_on(acp::commands::disconnect_all_sessions(&acp_session_store));
                     }
                     return;
                 }
