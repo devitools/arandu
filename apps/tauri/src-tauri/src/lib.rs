@@ -873,6 +873,8 @@ fn setup_macos_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = fix_path_env::fix();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())

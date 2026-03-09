@@ -118,12 +118,15 @@ export function ActiveSessionView({
   // Core ACP actions using new per-session commands
   const sendPrompt = useCallback(async (text: string) => {
     try {
+      if (!text.startsWith("/")) {
+        sessionMessages.addOptimisticUserMessage(text);
+      }
       await invoke("acp_session_send_prompt", { sessionId: session.id, text });
     } catch (e) {
       setErrors((prev) => [...prev, String(e)]);
       updateSessionEntry(session.id, { isStreaming: false });
     }
-  }, [session.id]);
+  }, [session.id, sessionMessages.addOptimisticUserMessage]);
 
   const persistPreferences = useCallback((partial: Partial<AcpPreferences>) => {
     try {
