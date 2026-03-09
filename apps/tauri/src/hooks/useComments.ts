@@ -130,6 +130,13 @@ export function useComments(workspaceId?: string) {
     setSelectedBlockIds([]);
   }, []);
 
+  const setBlockSelection = useCallback((blockIds: string[]) => {
+    setSelectedBlockIds(blockIds);
+    if (blockIds.length > 0) {
+      setIsPanelOpen(true);
+    }
+  }, []);
+
   const generateReview = useCallback((): string => {
     const unresolved = comments.filter((c) => !c.resolved);
     if (unresolved.length === 0) {
@@ -178,6 +185,7 @@ export function useComments(workspaceId?: string) {
     deleteComment,
     toggleBlockSelection,
     clearSelection,
+    setBlockSelection,
     generateReview,
     togglePanel,
     commentsByBlock,
