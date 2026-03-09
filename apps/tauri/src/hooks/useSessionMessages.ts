@@ -32,6 +32,7 @@ function toAcpMessage(r: MessageRecord): AcpMessage {
 
 export interface UseSessionMessagesReturn {
   clearMessages: () => void;
+  addOptimisticUserMessage: (text: string) => void;
   messages: AcpMessage[];
   isLoadingInitial: boolean;
   isLoadingMore: boolean;
@@ -73,6 +74,16 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
     void loadInitial();
   }, [loadInitial]);
 
+  const addOptimisticUserMessage = useCallback((text: string) => {
+    const optimisticMsg: AcpMessage = {
+      id: `optimistic-${Date.now()}`,
+      role: "user",
+      content: text,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+  }, []);
+
   useEffect(() => {
     const unlisten = window.__TAURI__.event.listen<{
       sessionId: string;
@@ -84,7 +95,10 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
       if (msgSessionId !== sessionId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === id)) return prev;
-        return [...prev, { id, role: "user", content, timestamp: new Date() }];
+        const withoutOptimistic = prev.filter(
+          (m) => !(m.id.startsWith("optimistic-") && m.role === "user" && m.content === content)
+        );
+        return [...withoutOptimistic, { id, role: "user", content, timestamp: new Date() }];
       });
     });
     return () => { void unlisten.then((fn) => fn()); };
@@ -151,5 +165,5 @@ export function useSessionMessages(sessionId: string): UseSessionMessagesReturn 
     return [...messages, ...streamingMessages];
   }, [messages, streamingMessages]);
 
-  return { messages: merged, isLoadingInitial, isLoadingMore, hasMore, loadMore, clearMessages };
+  return { messages: merged, isLoadingInitial, isLoadingMore, hasMore, loadMore, clearMessages, addOptimisticUserMessage };
 }
