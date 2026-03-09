@@ -24,7 +24,7 @@ interface UseSessionConnectionReturn {
   status: SessionConnectionStatus;
   isConnected: boolean;
   isConnecting: boolean;
-  connect: (opts: ConnectOptions) => Promise<string | null>;
+  connect: (opts: ConnectOptions) => Promise<string>;
   disconnect: () => Promise<void>;
 }
 
@@ -124,7 +124,7 @@ export function useSessionConnection(sessionId: string): UseSessionConnectionRet
   }, [sessionId]);
 
   const connect = useCallback(
-    async (opts: ConnectOptions) => {
+    async (opts: ConnectOptions): Promise<string> => {
       setStatus("connecting");
       try {
         const providerSessionId = await invoke<string>("acp_session_connect", {
@@ -143,7 +143,7 @@ export function useSessionConnection(sessionId: string): UseSessionConnectionRet
       } catch (e) {
         console.error("[useSessionConnection] connect error:", e);
         setStatus("disconnected");
-        return null;
+        throw e;
       }
     },
     [sessionId]

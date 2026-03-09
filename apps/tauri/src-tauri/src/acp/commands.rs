@@ -658,21 +658,39 @@ pub async fn acp_session_connect(
 
             let info: SessionInfo = if let Some(ref existing_id) = acp_session_id {
                 conn.set_suppress_updates(true);
-                let params = LoadSessionParams {
+                let load_params = LoadSessionParams {
                     session_id: existing_id.clone(),
                     cwd: workspace_path.clone(),
                     mcp_servers: vec![],
                 };
-                let result = conn
-                    .send_request("session/load", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
-                    .await?;
+                let load_result = conn
+                    .send_request("session/load", Some(serde_json::to_value(&load_params).map_err(|e| e.to_string())?))
+                    .await;
                 conn.set_suppress_updates(false);
-                let mut info: SessionInfo = serde_json::from_value(result)
-                    .map_err(|e| format!("Failed to parse session info: {}", e))?;
-                if info.session_id.is_empty() {
-                    info.session_id = existing_id.clone();
+
+                match load_result {
+                    Ok(result) => {
+                        let mut info: SessionInfo = serde_json::from_value(result)
+                            .map_err(|e| format!("Failed to parse session info: {}", e))?;
+                        if info.session_id.is_empty() {
+                            info.session_id = existing_id.clone();
+                        }
+                        info
+                    }
+                    Err(e) => {
+                        eprintln!("[acp] session/load failed for {}: {} — falling back to session/new", existing_id, e);
+                        conn.emit_log("warn", "session_load_fallback", &format!("session/load failed: {}", e));
+                        let params = NewSessionParams {
+                            cwd: workspace_path.clone(),
+                            mcp_servers: vec![],
+                        };
+                        let result = conn
+                            .send_request("session/new", Some(serde_json::to_value(&params).map_err(|e| e.to_string())?))
+                            .await?;
+                        serde_json::from_value(result)
+                            .map_err(|e| format!("Failed to parse session info: {}", e))?
+                    }
                 }
-                info
             } else {
                 let params = NewSessionParams {
                     cwd: workspace_path.clone(),

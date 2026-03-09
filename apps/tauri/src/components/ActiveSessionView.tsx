@@ -250,7 +250,6 @@ export function ActiveSessionView({
         opts.maxBudgetUsd = localStorage.getItem("arandu-claude-max-budget") || undefined;
       }
       const acpId = await sessionConn.connect(opts);
-      if (!acpId) throw new Error("Failed to connect to ACP");
 
       setActiveAcpSessionId(acpId);
       updateSessionEntry(session.id, { activeAcpSessionId: acpId });
