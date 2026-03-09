@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
 const mockInvoke = globalThis.__TAURI__.core.invoke as ReturnType<typeof vi.fn>;
@@ -25,6 +25,7 @@ beforeEach(() => {
   // Default: session not connected
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "acp_session_status") return Promise.resolve("disconnected");
+    if (cmd === "acp_session_check_health") return Promise.resolve("connected");
     return Promise.resolve();
   });
 });
@@ -178,5 +179,105 @@ describe("useSessionConnection", () => {
 
     expect(result.current.isConnecting).toBe(false);
     expect(result.current.status).toBe("connected");
+  });
+
+  it("health check interval fires acp_session_check_health after 30s", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_status") return Promise.resolve("connected");
+      if (cmd === "acp_session_check_health") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    renderHook(() => useSessionConnection("sess-1"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acp_session_status", { sessionId: "sess-1" });
+    });
+
+    mockInvoke.mockClear();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_check_health") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+
+    expect(mockInvoke).toHaveBeenCalledWith("acp_session_check_health", { sessionId: "sess-1" });
+
+    vi.useRealTimers();
+  });
+
+  it("acp:connection-status event with matching workspaceId updates status", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_status") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useSessionConnection("sess-1"));
+
+    await waitFor(() => expect(capturedListeners["acp:connection-status"]).toBeDefined());
+
+    act(() => {
+      capturedListeners["acp:connection-status"]({
+        payload: { workspaceId: "sess-1", status: "disconnected" },
+      });
+    });
+
+    expect(result.current.status).toBe("disconnected");
+    expect(result.current.isConnected).toBe(false);
+  });
+
+  it("ignores acp:connection-status events for other workspaceIds", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_status") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useSessionConnection("sess-1"));
+
+    await waitFor(() => expect(result.current.status).toBe("connected"));
+    await waitFor(() => expect(capturedListeners["acp:connection-status"]).toBeDefined());
+
+    act(() => {
+      capturedListeners["acp:connection-status"]({
+        payload: { workspaceId: "other-session", status: "disconnected" },
+      });
+    });
+
+    expect(result.current.status).toBe("connected");
+  });
+
+  it("visibility change triggers health check when connected", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_status") return Promise.resolve("connected");
+      if (cmd === "acp_session_check_health") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    renderHook(() => useSessionConnection("sess-1"));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acp_session_status", { sessionId: "sess-1" });
+    });
+
+    mockInvoke.mockClear();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "acp_session_check_health") return Promise.resolve("connected");
+      return Promise.resolve();
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("acp_session_check_health", { sessionId: "sess-1" });
+    });
   });
 });
