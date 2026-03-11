@@ -77,7 +77,10 @@ function WhisperContent() {
     try {
       await invoke("stop_and_transcribe");
     } catch (e) {
-      console.error("stop_and_transcribe failed:", e);
+      setErrorMsg(
+        String(e).length > 50 ? String(e).substring(0, 50) + "\u2026" : String(e)
+      );
+      setViewState("error");
     }
   }, []);
 

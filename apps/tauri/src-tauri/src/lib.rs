@@ -114,6 +114,7 @@ struct InitialFile(Mutex<Option<String>>);
 
 pub struct ExplicitQuit(pub Arc<AtomicBool>);
 pub struct IsRecording(pub Arc<AtomicBool>);
+pub struct IsTranscribing(pub Arc<AtomicBool>);
 pub struct RecordingMode(pub Mutex<Option<String>>);
 
 fn create_file_watcher(app: tauri::AppHandle) -> Result<notify::RecommendedWatcher, String> {
@@ -755,6 +756,11 @@ pub fn handle_recording_toggle(handle: &tauri::AppHandle) {
     if currently_recording {
         let _ = handle.emit("stop-recording", ());
     } else {
+        let is_transcribing = handle.state::<IsTranscribing>();
+        if is_transcribing.0.load(Ordering::Relaxed) {
+            return;
+        }
+
         if let Ok(mut guard) = handle.state::<RecordingMode>().0.lock() {
             *guard = Some("shortcut".to_string());
         }
@@ -922,6 +928,7 @@ pub fn run() {
         .manage(InitialFile(Mutex::new(None)))
         .manage(ExplicitQuit(Arc::new(AtomicBool::new(false))))
         .manage(IsRecording(Arc::new(AtomicBool::new(false))))
+        .manage(IsTranscribing(Arc::new(AtomicBool::new(false))))
         .manage(RecordingMode(Mutex::new(None)))
         .manage(whisper::commands::RecorderState(Mutex::new(None)))
         .manage(whisper::commands::TranscriberState(Mutex::new(None)))

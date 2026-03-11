@@ -88,7 +88,9 @@ pub fn cancel_recording(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let is_recording = app.state::<crate::IsRecording>();
+    let is_transcribing = app.state::<crate::IsTranscribing>();
     is_recording.0.store(false, Ordering::Relaxed);
+    is_transcribing.0.store(false, Ordering::Relaxed);
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     *guard = None;
@@ -102,35 +104,42 @@ pub fn stop_and_transcribe(
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let is_recording = app.state::<crate::IsRecording>();
+    let is_transcribing = app.state::<crate::IsTranscribing>();
     is_recording.0.store(false, Ordering::Relaxed);
+    is_transcribing.0.store(true, Ordering::Relaxed);
 
-    let mut recorder = {
-        let mut guard = recorder_state.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .take()
-            .ok_or_else(|| "No active recording".to_string())?
-    };
-    let audio = recorder.stop()?;
+    let result = (|| {
+        let mut recorder = {
+            let mut guard = recorder_state.0.lock().map_err(|e| e.to_string())?;
+            guard
+                .take()
+                .ok_or_else(|| "No active recording".to_string())?
+        };
+        let audio = recorder.stop()?;
 
-    if audio.is_empty() {
-        return Err("No audio captured".to_string());
-    }
-
-    let guard = transcriber_state.0.lock().map_err(|e| e.to_string())?;
-    let transcriber = guard.as_ref().ok_or("No whisper model loaded")?;
-
-    let _ = app.emit("transcription-started", ());
-
-    match transcriber.transcribe(&audio) {
-        Ok(text) => {
-            let _ = app.emit("transcription-complete", text.clone());
-            Ok(text)
+        if audio.is_empty() {
+            return Err("No audio captured".to_string());
         }
-        Err(e) => {
-            let _ = app.emit("transcription-error", e.clone());
-            Err(e)
+
+        let guard = transcriber_state.0.lock().map_err(|e| e.to_string())?;
+        let transcriber = guard.as_ref().ok_or("No whisper model loaded")?;
+
+        let _ = app.emit("transcription-started", ());
+
+        match transcriber.transcribe(&audio) {
+            Ok(text) => {
+                let _ = app.emit("transcription-complete", text.clone());
+                Ok(text)
+            }
+            Err(e) => {
+                let _ = app.emit("transcription-error", e.clone());
+                Err(e)
+            }
         }
-    }
+    })();
+
+    is_transcribing.0.store(false, Ordering::Relaxed);
+    result
 }
 
 #[tauri::command]
