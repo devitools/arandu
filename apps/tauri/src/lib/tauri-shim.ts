@@ -14,7 +14,11 @@ function getBrowserInvokeFallback(command: string): InvokeResult {
     case "workspace_list":
     case "session_list":
     case "load_history":
+    case "list_models":
+    case "list_audio_devices":
       return [];
+    case "get_whisper_settings":
+      return {};
     case "plan_path":
     case "get_initial_file":
     case "get_home_dir":
