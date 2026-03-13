@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "@/lib/tauri-shim";
 import "@/lib/i18n";
 import { SettingsApp } from "./SettingsApp";
 import "./index.css";
