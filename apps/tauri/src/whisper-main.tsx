@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "@/lib/tauri-shim";
 import "@/lib/i18n";
 import { WhisperApp } from "./WhisperApp";
 import "./index.css";
