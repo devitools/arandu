@@ -6,6 +6,25 @@ An intelligent development companion — Markdown viewer, AI workspace, and plan
 ![Linux](https://img.shields.io/badge/Linux-x86__64-orange)
 ![Windows](https://img.shields.io/badge/Windows-x86__64-green)
 
+## Applications
+
+### Tauri (Primary) ✅
+
+Cross-platform desktop app supporting macOS, Linux, and Windows.
+
+- **Location**: [`apps/tauri/`](apps/tauri/)
+- **Status**: Active development
+- **Stack**: Rust + React + TypeScript + Vite + TailwindCSS
+
+### macOS Native (Deprecated) ⚠️
+
+Legacy macOS-only app built with Swift + AppKit + WebKit.
+
+- **Location**: [`apps/macos-deprecated/`](apps/macos-deprecated/)
+- **Status**: **Discontinued** as of February 2025
+- **Replacement**: Use the Tauri app instead
+- **Details**: See [`apps/macos-deprecated/DEPRECATED.md`](apps/macos-deprecated/DEPRECATED.md)
+
 ## Features
 
 ### Document Viewing
@@ -239,7 +258,7 @@ Key libraries:
 For full architecture documentation, command reference, and codebase conventions, see [CLAUDE.md](./CLAUDE.md).
 
 Key points:
-- The macOS native app (`apps/macos/`) is **deprecated** — use the Tauri version only
+- The macOS native app (`apps/macos-deprecated/`) is **deprecated** — use the Tauri version only
 - Frontend is React + TypeScript — no vanilla JS, Vite handles the build
 - New Tauri commands: define in Rust → register in `invoke_handler` → add permissions to `capabilities/default.json`
 - UI components are from shadcn/ui — add new ones with `npx shadcn@latest add <component>`

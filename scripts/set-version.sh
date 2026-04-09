@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Setting version to $VERSION across all configs..."
 
 # 1. macOS Info.plist
-PLIST="$ROOT/apps/macos/Sources/Arandu/Info.plist"
+PLIST="$ROOT/apps/macos-deprecated/Sources/Arandu/Info.plist"
 if [ -f "$PLIST" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"

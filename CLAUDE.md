@@ -22,7 +22,7 @@ Arandu is a Markdown viewer and AI-assisted workspace application built with **T
 - CLI installer for macOS
 - Unix domain socket + TCP IPC for external process communication
 
-**IMPORTANT:** The macOS native version (`apps/macos/`) is DEPRECATED. All development happens in the Tauri version (`apps/tauri/`).
+**IMPORTANT:** The macOS native version (`apps/macos-deprecated/`) is DEPRECATED. All development happens in the Tauri version (`apps/tauri/`).
 
 ## Build Commands
 
